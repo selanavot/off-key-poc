@@ -1,0 +1,28 @@
+# Multi-threaded multiplication — standard MP-SPDZ pattern.
+#
+# Main thread:  takes inputs from both parties.
+# Worker thread: computes the product using Beaver triples.
+# Main thread:  opens (reveals) the result.
+#
+# This is the standard pattern used by vickrey.mpc, ML inference programs,
+# and any MP-SPDZ program that offloads computation to worker threads.
+#
+# Both parties run this exact same program, unmodified.
+
+x = MemValue(sint.get_input_from(0))   # party 0's input
+y = MemValue(sint.get_input_from(1))   # party 1's input
+
+result = sint.Array(1)
+
+# Worker thread: reads inputs from shared memory, multiplies, writes back.
+def worker():
+    idx = regint(0)
+    result[idx] = x.read() * y.read()
+
+tape = program.new_tape(worker)
+t = program.run_tape(tape, 0)
+program.join_tape(t)
+
+# Main thread reveals the result.
+print_ln('x * y = %s', result[0].reveal())
+print_ln('DONE')

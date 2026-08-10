@@ -1,0 +1,3 @@
+# Python bytecode cache (from patch_guess.py)
+__pycache__/
+*.pyc
