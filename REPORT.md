@@ -85,6 +85,84 @@ MAC check computes: `(m_0 + m_1) - (alpha_0 + 1 + alpha_1) * y`
 Since the attacker inputs `x = 0`, the opened output is always `0` — it reveals
 nothing about `y`. The attacker learns `y` purely from pass/fail.
 
+### The stronger attack: full input recovery from the unmasked check
+
+The selective-failure attack above leaks one bit per run. But MP-SPDZ's default
+MAC check leaks much more. In `Protocols/MAC_Check.hpp`, `MAC_Check_<U>::Check`
+implements the *unmasked* Damgård et al. (2013) check: for each opened value
+`v`, every party commits to and then opens its own check share
+
+```
+delta_i = v * alpha_i - m_{v,i}
+```
+
+(the small-batch path uses these per value directly; the batched path opens
+`tau_i = gamma_i - alpha_i * a` for a random linear combination). Because the
+shares are *opened*, the attacker — as party 0 — receives the honest party's
+`delta_1` and can reconstruct the full sum
+
+```
+sum_i delta_i = v * alpha - m_v
+```
+
+for every opened value. This is exactly the leakage the masked check of Kyster
+et al. was introduced to prevent; stock MP-SPDZ does not use the masked check.
+
+With the off-key setup, no guess is needed. The worker opens `d = y - b` under
+key `alpha + 1`, where `y` was authenticated under `alpha`, so the reconstructed
+check value on that opening is
+
+```
+d * (alpha + 1) - m_d = (y - b)(alpha + 1) - (alpha * y - (alpha + 1) b)
+                      = (alpha + 1) y - alpha * y
+                      = y.
+```
+
+The attacker reads `y` directly off the opened check value (the companion
+opening `epsilon = x - a` reconstructs to `x = 0`, revealing nothing new). The
+check then aborts because the value is nonzero, but recovery has already
+happened — the check shares are opened before the abort decision. A single run
+recovers an arbitrary `y`, and, as before, the opened output `x * y = 0` reveals
+nothing. If the attacker also adds a guess `g` to `y`'s MAC (as in the
+selective-failure variant), the recovered value is `y - g`; with `g = 0` it is
+`y` itself.
+
+The PoC's patch to `MAC_Check.hpp` simply prints these reconstructed per-opening
+values on the attacked worker thread; see `run-recovery.sh`.
+
+### Example 2: private affine evaluation (a true security violation)
+
+Examples 1 and 2 use the same off-key mechanism; they differ in what the honest
+output leaks. Example 1 (`x * y` with `x = 0`) has output `0`, an outcome an
+ideal-world adversary could also force by substituting inputs, so it does not by
+itself violate malicious security. Example 2 removes that loophole.
+
+`affine_eval.mpc` computes `f(x; (y, r)) = x * y + r` with `r` uniform (P1's
+input) and the result revealed only to P0. The uniform `r` makes the output
+uniform for **any** `x`, so it reveals nothing about `y`; an ideal-world
+adversary learns nothing. Yet the off-key attack recovers `y` (or tests `y = 1`
+via abort). Leaking `y` while the output is independent of `y` is a genuine
+breach of malicious security.
+
+The structural difference from Example 1 is the key assignment. With `x ≠ 0`,
+the mask opening `epsilon = x - a` must reconstruct to a *consistent* check
+value, so `x` has to be authenticated under the worker key `alpha+1` — the same
+key as the triple. Otherwise `epsilon`'s reconstructed check value would be `x`
+(nonzero), aborting regardless of `y`. The program arranges this by taking `y`
+on the main thread (key `alpha`) and `x`, `r`, and the one-sided-output mask on
+the worker thread (key `alpha+1`); MP-SPDZ input files are per thread
+(`Input-P<i>-<thread>`). The one-sided output uses `reveal_to(0)`, which draws a
+fresh mask supplied by P0 — exactly the "mask `s` known only to P0" the
+construction requires. Only the `d = y - b` opening then mixes keys, so it is
+the sole nonzero reconstructed check value, equal to `y - g`.
+
+`r` must be sampled uniformly over the whole field for the output to hide `y`
+for every `x`; `run-affine.sh` samples it as 256 uniform bits reduced modulo the
+field prime (the attack itself is independent of `r`'s distribution). Verified:
+recovery of `y ∈ {0, 1, 42, 987654}` for `x ∈ {1, 3}` (output masked by `r`
+throughout), and the selective-failure variant (`GUESS=1`) succeeding iff
+`y = 1`.
+
 ## Reproduction
 
 See [README.md](README.md) for Docker-based reproduction. The PoC runs two
@@ -99,4 +177,5 @@ binary.
 | `Processor/Online-Thread.hpp` | Per-thread MAC key read (`*(tinfo->alphapi)`) |
 | `OT/NPartyTripleGenerator.hpp` | Per-batch sacrifice check |
 | `Protocols/MAC_Check_Base.h` | Online MAC verification |
+| `Protocols/MAC_Check.hpp` | `MAC_Check_<U>::Check` — unmasked check that opens each party's `delta_i` (input recovery) |
 | `Processor/Processor.hpp` | `SubProcessor::muls()` — Beaver multiplication |

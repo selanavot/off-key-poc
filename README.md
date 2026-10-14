@@ -1,9 +1,21 @@
-# Off-Key: a selective-failure attack on MP-SPDZ MASCOT via MAC-key inconsistency
+# Off-Key: attacks on MP-SPDZ MASCOT via MAC-key inconsistency
 
-A proof-of-concept **input-guessing selective-failure attack** against MP-SPDZ's
-MASCOT protocol. A malicious party learns an honest party's secret input by
-observing only whether the protocol succeeds or aborts — while the opened output
-reveals nothing.
+Proof-of-concept **off-key** attacks against MP-SPDZ's MASCOT protocol. A
+malicious party arranges for preprocessing under two different MAC keys and, from
+that, breaks the confidentiality of an honest party's secret input — while the
+opened output reveals nothing. Three demonstrations, in increasing strength:
+
+- **Selective failure** (`run-attack.sh`) — the attacker guesses `y` and learns
+  one bit (whether the guess is right) from whether the protocol aborts.
+- **Full input recovery** (`run-recovery.sh`) — the attacker recovers `y`
+  *outright* in a single run, with no guessing, by reading the value opened during
+  MP-SPDZ's (unmasked) MAC check.
+- **Private affine evaluation** (`run-affine.sh`) — the same attack on
+  `f(x; (y, r)) = x·y + r`, whose output is masked by a uniform `r`, making the
+  leak a genuine violation of malicious security rather than a simulatable one.
+
+<!-- TODO(eprint): replace with the ePrint link once the paper is posted. -->
+> 📄 **This PoC accompanies our paper — _ePrint: link to be added_.**
 
 > **Fixed upstream in MP-SPDZ [v0.4.3](https://github.com/data61/MP-SPDZ/commit/982e91e7a378) (Jul 2026); this PoC targets the earlier pinned commit [`58d2739`](https://github.com/data61/MP-SPDZ/commit/58d2739ac251262c0bd6034f7fc7d0666a6b1e2c).**
 
@@ -47,16 +59,26 @@ Requires Docker. Run these from the repository root:
 # 1. Build MP-SPDZ at the pinned pre-fix commit (one-time, ~10 min)
 docker build -t mpspdz:built .
 
-# 2. Correct guess → program succeeds → attacker learns y = 7
-./run-attack.sh 7 7
+# 2. Selective failure: correct vs. wrong guess (attacker learns one bit)
+./run-attack.sh 7 7          # guess right → succeeds → learns y = 7
+./run-attack.sh 7 3          # guess wrong → aborts   → learns y ≠ 7
 
-# 3. Wrong guess → MAC check fails → attacker learns y ≠ 7
-./run-attack.sh 7 3
+# 3. Full input recovery: attacker recovers y in ONE run, no guessing
+./run-recovery.sh 42         # attacker prints "y = 42"
+./run-recovery.sh 12345      # attacker prints "y = 12345"
+
+# 4. Example 2 — private affine evaluation f(x;(y,r)) = x·y + r, output to P0 only:
+#    the output is masked by a uniform r, so it reveals nothing about y for ANY x,
+#    yet the attacker still recovers y (or tests y==1 via abort).
+./run-affine.sh 42 1         # recovery: attacker prints "y = 42"
+GUESS=1 ./run-affine.sh 1 1  # selective failure: succeeds iff y == 1
 ```
 
 `run-attack.sh [guess] [secret]` starts two containers on a Docker network — an
 `honest` party running the stock `mascot-party.x`, and an `attacker` party whose
 binary is patched at runtime — and reports what the attacker learns.
+`run-recovery.sh [secret]` and `run-affine.sh [secret] [x]` use the same
+two-container setup; in all of them the honest party runs the unmodified binary.
 
 ## The program
 
@@ -121,12 +143,79 @@ the guess added to the MAC.
 
 See [REPORT.md](REPORT.md) for the full technical analysis with code traces.
 
+## The stronger attack: full input recovery
+
+The selective-failure attack above leaks one bit per run. MP-SPDZ's MAC check
+leaks much more. Its default check (in `Protocols/MAC_Check.hpp`) is the
+*unmasked* Damgård et al. (2013) check: for each opened value, **every party
+commits to and then opens its own check share** `δᵢ = v· αᵢ − macᵢ`. So the
+attacker — as a participant — learns the reconstructed sum `Σ δᵢ = v·α − m_v`
+for every opened value.
+
+With the off-key setup, no guess is needed. The worker thread opens the Beaver
+mask `d = y − b` under key `α+1`, while `y` was authenticated under `α`, so the
+reconstructed check value on that opening is exactly
+
+```
+d·(α+1) − m_d = y.
+```
+
+`run-recovery.sh` reads `y` straight off that opened check value. The check then
+aborts (the value is nonzero for `y ≠ 0`), but recovery already happened — the
+check shares are opened before the abort decision. A single run recovers an
+arbitrary `y`, and the opened output `x·y = 0` still reveals nothing.
+
+```bash
+./run-recovery.sh 42       # → "Attacker recovered the honest party's secret: y = 42"
+```
+
+This is why the specific MAC-check variant matters: against the *masked* check
+of Kyster et al. (*Rushing at SPDZ*) the attack degrades to the one-bit
+selective failure above, but MP-SPDZ's default check is the unmasked one.
+
+## Example 2: private affine evaluation
+
+Example 1 (`x·y` with `x = 0`) has output `0` — an outcome an ideal-world
+adversary could also force by substituting inputs, so leaking `y` there is not by
+itself a violation of malicious security. `affine_eval.mpc` closes that gap. It
+computes
+
+```
+f(x; (y, r)) = x·y + r,     output revealed only to P0,     r uniform (P1's input)
+```
+
+Because `r` is uniform over the field, the output is uniform for **any** `x`, so
+it reveals nothing about `y` — not even whether `y = 1`. An ideal-world adversary
+learns nothing. Yet the off-key attack still recovers `y` (or tests `y = 1` via
+abort), which is now a genuine breach of malicious security.
+
+The mechanism is identical, with one structural difference: here `x ≠ 0`, so `x`
+**must** be authenticated under the worker key `α+1` — otherwise the mask opening
+`epsilon = x − a` would fail regardless of `y`. The program achieves this by
+inputting `y` on the main thread (key `α`) and `x`, `r`, and the one-sided-output
+mask on the worker thread (key `α+1`); MP-SPDZ input files are therefore per
+**thread** (`Input-P<i>-<thread>`).
+
+```bash
+./run-affine.sh 42 1         # recovery: recovers y = 42 while the output stays uniform
+GUESS=1 ./run-affine.sh 1 1  # selective failure: completes iff y == 1
+```
+
+`r` must be sampled uniformly over the whole field for this to hold: a
+small-range mask would leave the possible outputs disjoint across `y` for a large
+`x`, and the output alone would identify `y`. The runner samples `r` as 256
+uniform bits, reduced modulo the field prime in-protocol (statistical distance
+≤ 2⁻¹²⁸ from uniform). The attack itself is independent of `r`.
+
 ## Files
 
 | File | Description |
 |------|-------------|
-| `run-attack.sh` | Two-container attack demo |
-| `simple_threaded_mul.mpc` | MPC program (both parties run this, unmodified) |
+| `run-attack.sh` | Selective-failure demo (Example 1): `[guess] [secret]` |
+| `run-recovery.sh` | Full input-recovery demo (Example 1): `[secret]` |
+| `run-affine.sh` | Private affine evaluation (Example 2): `[secret] [x]`, `GUESS=1` for selective failure |
+| `simple_threaded_mul.mpc` | Example 1 program `x·y` (both parties run this, unmodified) |
+| `affine_eval.mpc` | Example 2 program `x·y + r` (both parties run this, unmodified) |
 | `patch_guess.py` | Patches applied to the attacker's binary at runtime |
 | `Dockerfile` | Builds unmodified MP-SPDZ at the pinned pre-fix commit |
 | `REPORT.md` | Technical analysis with code traces |
