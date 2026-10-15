@@ -143,4 +143,10 @@ self-contained PoCs for the other evaluated frameworks:
   full input recovery, and the Example 2 private affine evaluation. See
   [`scale-mamba/README.md`](scale-mamba/README.md).
 
-(FANNG-MPC, a SCALE-MAMBA fork, is added separately.)
+- [`fanng/`](fanng/) — **FANNG-MPC** (a SCALE-MAMBA fork; Full Threshold). Same
+  cross-run off-key attack, inherited unchanged. Includes selective failure,
+  full input recovery, and the Example 2 private affine evaluation, plus
+  the build harness and a [native-x86 runbook](fanng/NATIVE-X86-RUNBOOK.md).
+  Both recovery and affine were verified on native x86 under the **real FHE/BGV**
+  offline (local emulation can do `FAKE=1` only). See
+  [`fanng/README.md`](fanng/README.md).
