@@ -1,0 +1,7 @@
+# PoC run 1 (-memory empty): Player 0 inputs a secret y; we store the
+# authenticated full-threshold share (y, alpha*y) into Ms[100].  At end of
+# run the share is dumped to Data/Memory-P<i>.
+print_ln("Player 0, please enter the secret y:")
+y = sint.get_private_input_from(0)
+y.store_in_mem(100)
+print_ln("stored secret in Ms[100]")

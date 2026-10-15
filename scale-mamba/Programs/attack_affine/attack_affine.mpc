@@ -1,0 +1,35 @@
+# PoC run 2 (-memory old), EXAMPLE 2: private affine evaluation
+#   f(x; (y, r)) = x * y + r.
+#
+# y was stored in run 1, authenticated under the MAC key alpha. Between runs the
+# attacker (Player 1) incremented its key share (global key -> alpha+1) and, for
+# the selective-failure test, added a guess g to its share of y's MAC tag. In
+# run 2 the honest party P0 enters r and the attacker P1 enters x; both are
+# entered AFTER the restart, so both -- and the Beaver triple consumed by the
+# multiply -- are authenticated under alpha+1. Only y is still under alpha.
+#
+# The multiply opens the mask value delta = y - b with b under alpha+1 while y
+# is under alpha, so the (unmasked) MAC check passes iff y == g. Note x must be
+# under alpha+1: unlike Example 1 (x = 0), a nonzero x under the wrong key would
+# make epsilon = x - a fail regardless of y; entering x in run 2 authenticates
+# it under alpha+1, as required.
+#
+# The revealed output z = x*y + r is masked by the honest party's mask r, which
+# the attacker does not know. Theoretically, Example 2 wants r uniform over the
+# whole field so that x*y+r hides y for EVERY x. Here r is the honest party's
+# input, and SCALE-MAMBA's clear input path is 64-bit, so we sample r uniformly
+# over [0, 2^64). This does not span the ~128-bit field, but it does not matter
+# for this PoC: the off-key attack (complete-vs-abort, and the recovery variant)
+# is entirely independent of r's distribution, and 2^64 comfortably exceeds the
+# small x used in the demo so the shown output still hides y. The full-field
+# uniform mask is the paper's theoretical object, not something the attack needs.
+#
+# Both parties run this exact same program; only the attacker's own files are
+# edited between the runs.
+y = sint.load_mem(100)                    # carried from run 1 (under alpha)
+print_ln("Player 1, please enter x:")
+x = sint.get_private_input_from(1)        # attacker's x (run 2 -> alpha+1)
+print_ln("Player 0, please enter r:")
+r = sint.get_private_input_from(0)        # honest party's mask r (64-bit; see note above)
+z = x * y + r
+print_ln("z = %s", z.reveal())

@@ -1,0 +1,20 @@
+# PoC run 2 (-memory old), STRONGER Section 4.4 variant: recover y outright.
+#
+# Section 4.4 analyses "checking d = y - b on its own": with an off-key mask b
+# (fresh, authenticated under alpha+1) and the carried secret y (authenticated
+# under alpha), the unmasked MAC check opens the value d*(alpha+1) - m_d = g - y.
+# SCALE-MAMBA uses exactly that unmasked check, so the attacker reads y directly.
+#
+# We open that d = y - b on its own -- a single opening -- so the batched check
+# value is exactly r*(g - y) with a single, attacker-known coefficient r, and the
+# instrumented check inverts it to y = g - t/r (see patches/offkey_recover.py).
+# b comes from a fresh preprocessed square tuple, so it is authenticated under
+# the current run's key; between runs the attacker set that key to alpha+1.
+#
+# Nothing about y is revealed by the opened value d itself: b is uniform and
+# independent, so d = y - b is uniform. The leak is purely through the unmasked
+# check value, which the attacker recovers before the run aborts.
+y = sint.load_mem(100)
+b, _ = sint.get_random_square()   # b: fresh mask, authenticated under alpha+1
+d = (y - b).reveal()              # single off-key opening d = y - b
+print_ln("d = %s (uniform; reveals nothing about y on its own)", d)

@@ -1,0 +1,16 @@
+# PoC run 2 (-memory old): load the secret y stored in run 1, multiply by
+# an attacker-chosen x, and reveal.
+#
+# Between runs the attacker (Player 1) incremented its MAC-key share alpha_1
+# (so the global key is now alpha+1) and -- for the full input-guessing
+# variant -- added a guess g to its share of y's MAC tag.  The Beaver triple
+# consumed by the multiply is fresh under alpha+1, so the mask-opening MAC
+# check passes iff the (zero-check or guess) condition on y holds.
+#
+# Player 1 enters x = 0, so the revealed output is always 0 and leaks nothing
+# about y; the protocol abort (or not) is the side channel.
+y = sint.load_mem(100)
+print_ln("Player 1, please enter x (use 0 for clean selective failure):")
+x = sint.get_private_input_from(1)
+z = x * y
+print_ln("z = %s", z.reveal())

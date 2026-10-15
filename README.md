@@ -130,3 +130,17 @@ See [REPORT.md](REPORT.md) for the full technical analysis with code traces.
 | `patch_guess.py` | Patches applied to the attacker's binary at runtime |
 | `Dockerfile` | Builds unmodified MP-SPDZ at the pinned pre-fix commit |
 | `REPORT.md` | Technical analysis with code traces |
+
+## Other frameworks in this repository
+
+The same off-key / MAC-key-inconsistency attack applies across the SPDZ family.
+Beyond the MP-SPDZ PoC above (at the repository root), this repo includes
+self-contained PoCs for the other evaluated frameworks:
+
+- [`scale-mamba/`](scale-mamba/) — **SCALE-MAMBA** (Full Threshold). The off-key
+  material arises across a stop-and-restart (the MAC-key share is re-read from
+  disk each run), rather than across threads. Includes selective failure,
+  Section 4.4 input recovery, and the Example 2 private affine evaluation. See
+  [`scale-mamba/README.md`](scale-mamba/README.md).
+
+(FANNG-MPC, a SCALE-MAMBA fork, is added separately.)
