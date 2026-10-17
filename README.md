@@ -5,9 +5,7 @@ demonstrates the attack on three SPDZ-family MPC frameworks, MP-SPDZ,
 SCALE-MAMBA, and FANNG-MPC, each as a self-contained PoC run against an
 **unmodified** honest party.
 
-> 📄 **Accompanying paper.** This PoC accompanies a research paper submitted to
-> the [IACR Cryptology ePrint Archive](https://eprint.iacr.org/). The paper is not
-> public yet; we will add a direct link here the moment it is posted.
+> 📄 **Accompanying paper.** This PoC accompanies the submitted paper *Off-Key*.
 
 ## Background: the SPDZ MAC scheme
 
