@@ -1,6 +1,17 @@
-FROM python:3.10.3-bullseye
+FROM python:3.10-bullseye
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Bullseye is oldstable: the live mirrors' package indices name point-release
+# versions whose .debs the pools have already superseded, so a plain
+# `apt-get update` then install 404s. Pin apt to an immutable snapshot, which
+# retains every historical .deb, so the index and pool always agree.
+RUN printf '%s\n' \
+    'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/20250601T000000Z bullseye main' \
+    'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/20250601T000000Z bullseye-updates main' \
+    'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/20250601T000000Z bullseye-security main' \
+    > /etc/apt/sources.list
+
+RUN apt-get -o Acquire::Check-Valid-Until=false update \
+    && apt-get install -y --no-install-recommends \
         automake build-essential clang-11 cmake git \
         libboost-dev libboost-thread-dev libboost-filesystem-dev \
         libboost-iostreams-dev libclang-dev libgmp-dev \

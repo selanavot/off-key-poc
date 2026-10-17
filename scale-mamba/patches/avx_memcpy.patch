@@ -1,0 +1,49 @@
+diff --git a/src/Tools/avx_memcpy.h b/src/Tools/avx_memcpy.h
+index 2fa3181..e6e886e 100644
+--- a/src/Tools/avx_memcpy.h
++++ b/src/Tools/avx_memcpy.h
+@@ -13,6 +13,7 @@ All rights reserved
+ 
+ inline void avx_memcpy(void *dest, const void *source, size_t length)
+ {
++#ifdef __AVX__
+   __m256i *d= (__m256i *) dest, *s= (__m256i *) source;
+   while (length >= 32)
+     {
+@@ -21,6 +22,11 @@ inline void avx_memcpy(void *dest, const void *source, size_t length)
+     }
+   __m128i *d2= (__m128i *) d;
+   __m128i *s2= (__m128i *) s;
++#else
++  // SSE2 fallback for x86_64 targets without AVX (e.g. under emulation)
++  __m128i *d2= (__m128i *) dest;
++  __m128i *s2= (__m128i *) source;
++#endif
+   while (length >= 16)
+     {
+       _mm_storeu_si128(d2++, _mm_loadu_si128(s2++));
+@@ -32,6 +38,7 @@ inline void avx_memcpy(void *dest, const void *source, size_t length)
+ 
+ inline void avx_memzero(void *dest, size_t length)
+ {
++#ifdef __AVX__
+   __m256i *d= (__m256i *) dest;
+   __m256i s= _mm256_setzero_si256();
+   while (length >= 32)
+@@ -39,6 +46,16 @@ inline void avx_memzero(void *dest, size_t length)
+       _mm256_storeu_si256(d++, s);
+       length-= 32;
+     }
++#else
++  // SSE2 fallback for x86_64 targets without AVX (e.g. under emulation)
++  __m128i *d= (__m128i *) dest;
++  __m128i s= _mm_setzero_si128();
++  while (length >= 16)
++    {
++      _mm_storeu_si128(d++, s);
++      length-= 16;
++    }
++#endif
+   if (length)
+     memset((void *) d, 0, length);
+ }
