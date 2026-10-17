@@ -30,12 +30,14 @@ two circuits relate).
 
 ## How to run
 
-The image needs x86 AES-NI/PCLMULQDQ, so on Apple Silicon it runs under
-linux/amd64 emulation (slow, but works via Docker Desktop). Build once:
+Build the pinned, patched SCALE-MAMBA image once:
 
 ```bash
 docker build --platform linux/amd64 -t scale-mamba-attack .   # one-time, ~15-20 min
 ```
+
+> We recommend a native x86 Linux machine. SCALE-MAMBA needs x86 AES-NI/PCLMULQDQ;
+> on Apple Silicon it runs under linux/amd64 emulation, which works but is slow.
 
 The attack driver takes the circuit and attack type as flags:
 
@@ -62,7 +64,7 @@ FAKE=1 ./run-attack.sh --circuit mult --attack selective --guess-of-y 5 --real-y
 `run-attack.sh` runs the honest store (run 1) and the attacker's restart (run 2),
 then reports the result. `--circuit` picks the functionality and `--attack` the
 strength: `selective` needs `--guess-of-y` and leaks one bit (complete vs abort), which reveals whether the guess was correct.
-`recovery` reads `y` outright from the unmasked MAC check with no guessing. The
+`recovery` reads `y` outright from the unmasked MAC check with no guessing.
 
 By default, the offline phase uses the real FHE/BGV preprocessing, which takes minutes per run under emulation.
 For a faster run, use the flag `FAKE=1`, which uses SCALE-MAMBA's trusted-dealer for the preprocessing phase. The attack remains identical.

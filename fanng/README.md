@@ -1,32 +1,27 @@
 # Cross-Run MAC-Key Inconsistency in FANNG-MPC (Full Threshold)
 
 FANNG-MPC is a fork of SCALE-MAMBA and inherits the cross-run off-key attack
-unchanged, in both the selective-failure and full-recovery variants. **For the
-full analysis see [`../scale-mamba/README.md`](../scale-mamba/README.md).** This
-folder is just the FANNG-specific proof of concept, with the run knobs FANNG needs.
+unchanged, in both the selective-failure and full-recovery variants and on both
+circuits. The vector, threat model, and analysis are identical to SCALE-MAMBA, so
+this folder is only the FANNG-specific proof of concept; see
+[`../scale-mamba/README.md`](../scale-mamba/README.md) for how and why the attack
+works.
 
-> **What's bundled here.** FANNG-MPC's build harness ([`docker/`](docker/)) and
-> the no-AVX emulation patch ([`patches/avx_memcpy.h`](patches/avx_memcpy.h)) are
-> git-untracked upstream, so copies are included here. The complete, tested
-> end-to-end procedure, including running the **real FHE/BGV** offline on a
-> native x86 box (required; local Apple-Silicon emulation can do `FAKE=1` only,
-> and the real-FHE peak exceeds the Docker VM cap), is in
-> [`NATIVE-X86-RUNBOOK.md`](NATIVE-X86-RUNBOOK.md). Both the input-recovery and
-> Example 2 affine attacks were verified on native x86 under real FHE.
+What differs is the build harness and a couple of run knobs. FANNG's Docker harness
+([`docker/`](docker/)) and the no-AVX patch ([`patches/avx_memcpy.h`](patches/avx_memcpy.h))
+are git-untracked upstream, so copies live here.
 
 ## How to run
 
 Clone the upstream [Crypto-TII/FANNG-MPC](https://github.com/Crypto-TII/FANNG-MPC)
 source, drop in this folder's `docker/`, `patches/`, `poc.sh`/`patcher.py`, and
-`Programs/attack_*`, then build with the harness (it needs x86 AES-NI/PCLMULQDQ
-and stdin IO; `patches/avx_memcpy.h` guards the AVX path for emulation):
+`Programs/attack_*`, and build the container:
 
 ```bash
 docker/run.sh build && docker/run.sh up && docker/run.sh progs
 ```
 
-Then, from this folder, the attack driver takes the circuit and attack type as
-flags:
+The attack driver takes the circuit and attack type as flags:
 
 ```
 run-attack.sh --circuit mult|affine --attack selective|recovery --real-y N [--guess-of-y G] [--x X]
@@ -48,54 +43,28 @@ For example:
 FAKE=1 ./run-attack.sh --circuit mult --attack selective --guess-of-y 5 --real-y 5
 ```
 
-`run-attack.sh` installs variant 18, syncs the attack programs and poc scripts
-into the running `fanng` container, runs the honest store (run 1) and the
-attacker's restart (run 2), and reports the result. `--circuit` picks the
-functionality and `--attack` the strength: `selective` needs `--guess-of-y` and
-leaks one bit (complete vs abort); `recovery` reads `y` outright from the unmasked
-MAC check with no guessing (and, since that instruments the check, it applies
-`patches/offkey_recover.py` and rebuilds the runtime once before running). The
-default offline is the **real FHE/BGV** preprocessing, including the per-run
-`ctx_macs = Enc(alpha_i)` regeneration the attack abuses; `FAKE=1` swaps in FANNG's
-trusted-dealer offline, which keeps the attack identical (it still reads
-`Data/MKey-<i>.key` and runs the same online MAC check) and only bypasses the FHE
-path.
+`run-attack.sh` syncs the attack programs and poc scripts into the running `fanng`
+container, runs the honest store (run 1) and the attacker's restart (run 2), and
+reports the result. The recovery attacks additionally instrument the MAC check
+(`patches/offkey_recover.py`, gated on `OFFKEY_RECOVER`, which only the attacker
+sets) and rebuild the runtime once. The driver also passes two FANNG-specific
+knobs automatically: `-dOT` skips the unused binary-OT preprocessing, and
+`SCALE_IO_SIMPLE=1` feeds inputs on stdin.
 
-> **Memory warning.** The real FHE offline (the default) peaks at ~17 GiB
-> resident on variant 18 and needs a native x86 machine with around 32 GB RAM. Use FAKE=1 to run in low-memory environments.
-
-The driver also passes two FANNG-specific knobs: **`-dOT`** skips the binary
-TinyOT/OT production (the attack is purely arithmetic, so the binary engine is
-unused, and this trims the real-FHE peak), and **`SCALE_IO_SIMPLE=1`** gives
-stdin/stdout IO so the guess can be fed on stdin.
-
-## Full input recovery
-
-FANNG inherits SCALE-MAMBA's **unmasked** SPDZ MAC check verbatim, so `--attack
-recovery` works exactly as there: the attacker reconstructs the off-key opening's
-check value and reads `y` in a single run, with no guessing. SCALE-MAMBA and FANNG
-batch a run's openings into one MAC check, so the recovery program arranges the
-off-key `d = y - b` to be the only off-key opening in that batch (opened last), and
-the instrumentation inverts it to `y`. See
-[`../scale-mamba/README.md`](../scale-mamba/README.md) for the mechanism and the
-accompanying paper for the full derivation.
-
-Unlike the selective attacks (which need no source change), the recovery attacks
-instrument the check, so `run-attack.sh` applies `patches/offkey_recover.py` to the
-mounted source and **rebuilds the runtime once** before running. The
-instrumentation is gated on `OFFKEY_RECOVER` (set only by the attacker, Player 1);
-an honest party running the same binary without it is unaffected.
+> We recommend a native x86 Linux machine with ~32 GB RAM: the default real
+> FHE/BGV offline peaks at ~17 GiB on variant 18. On Apple Silicon it runs under
+> linux/amd64 emulation, which is slow and too memory-constrained for the real
+> offline, so use `FAKE=1` there. The tested native end-to-end procedure is in
+> [`NATIVE-X86-RUNBOOK.md`](NATIVE-X86-RUNBOOK.md).
 
 ## Files
 
 | File | What |
 |---|---|
-| `run-attack.sh` | The attack driver (circuit and attack type are flags; see above) against the `fanng` container |
-| `poc.sh` | In-container driver (`store`/`open`/`recover`/`affine`/`affine-recover`); real FHE by default; `-dOT` + Simple IO; `FAKE=1` for trusted-dealer |
+| `run-attack.sh` | The attack driver (circuit and attack type are flags; see above) |
+| `poc.sh` | In-container driver: `store` / `open` / `recover` / `affine` / `affine-recover` |
 | `patcher.py` | The two between-runs edits (Player 1): `MKey-1.key`, `Memory-P1` |
-| `patches/offkey_recover.py` | Env-gated (`OFFKEY_RECOVER`) instrumentation of the unmasked MAC check for recovery; attacker-only, no effect without the variable |
-| `Programs/attack_store/attack_store.mpc` | Run 1: P0 inputs `y`, store in `Ms[100]` |
-| `Programs/attack_open/attack_open.mpc` | Run 2 (mult, selective): load `y`, reveal `z = x·y` with `x = 0` |
-| `Programs/attack_recover/attack_recover.mpc` | Run 2 (mult, recovery): load `y`, open a single off-key value `d = y - b` |
-| `Programs/attack_affine/attack_affine.mpc` | Run 2 (affine, selective): load `y`, enter `x` (P1) and 64-bit mask `r` (P0), reveal `z = x*y + r` |
-| `Programs/attack_affine_recover/attack_affine_recover.mpc` | Run 2 (affine, recovery): the affine output plus a standalone off-key `d = y - b` opening |
+| `patches/offkey_recover.py` | Env-gated (`OFFKEY_RECOVER`) instrumentation of the unmasked MAC check for recovery; attacker-only |
+| `patches/avx_memcpy.h` | AVX path `#ifdef`-guarded for no-AVX emulation |
+| `docker/` | FANNG build harness (git-untracked upstream; copied here) |
+| `Programs/attack_*` | The run-1 store and run-2 attack programs (mult/affine, selective/recovery) |
