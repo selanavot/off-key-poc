@@ -14,8 +14,10 @@ opened output reveals nothing. Three demonstrations, in increasing strength:
   `f(x; (y, r)) = x·y + r`, whose output is masked by a uniform `r`, making the
   leak a genuine violation of malicious security rather than a simulatable one.
 
-<!-- TODO(eprint): replace with the ePrint link once the paper is posted. -->
-> 📄 **This PoC accompanies our paper — _ePrint: link to be added_.**
+> 📄 **Accompanying paper.** This PoC accompanies a research paper submitted to
+> the [IACR Cryptology ePrint Archive](https://eprint.iacr.org/). The paper is not
+> public yet; we will add a direct link here the moment it is posted. This
+> repository is self-contained and does not require the paper to build or run.
 
 > **Fixed upstream in MP-SPDZ [v0.4.3](https://github.com/data61/MP-SPDZ/commit/982e91e7a378) (Jul 2026); this PoC targets the earlier pinned commit [`58d2739`](https://github.com/data61/MP-SPDZ/commit/58d2739ac251262c0bd6034f7fc7d0666a6b1e2c).**
 
