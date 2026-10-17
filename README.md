@@ -22,51 +22,44 @@ keys** breaks that assumption. By arranging for a secret `y` (authenticated unde
 under `α + 1`) to meet in one check, the attacker makes the MAC check itself leak
 information about `y`.
 
+All the attacks here exploit implementation vulnerabilities, and they do not break the theoretical security of SPDZ.
+
 ## Two strengths of the attack
 
-The attack comes in two strengths, differing in how much the MAC check gives up
-and in which MAC-check protocols they work against:
+We present two attacks, differing in their generality and privacy leakage.
 
-- **Selective abort, MAC-check-protocol independent.** The attacker folds a guess for `y`
-  into the off-key material so the check passes if and only if the guess was
-  right. Because it uses nothing but the abort signal, it works against *any* SPDZ
-  MAC check.
+- **Selective abort, MAC-check-protocol independent.** The attacker folds a guess for a secret `y`
+  into the off-key material, and the check passes if and only if the guess was
+  correct. This attack uses nothing but the abort signal, it works against *any* SPDZ
+  MAC check. This allows the adversary to check whether a potentially low entropy secret `y` equals a value of their choice.
 
-- **Full secret recovery.** No guessing: the attacker recovers
-  `y` outright in a single run. It relies on the **unmasked** MAC check of Damgård
-  et al. (2013), in which every party commits to and then opens its own check
+- **Full secret recovery.** The attacker recovers
+  `y` outright in a single run. This attack uses the internal values used in the mask check protocols used in all of the frameworks we attack, or more specifically the **unmasked** MAC check of Damgård
+  et al. (2013). Every party commits to and then opens its own check
   share, so a participant reconstructs the check value directly and one off-key
-  opening reconstructs to `y` itself. All three frameworks here ship this unmasked
-  check; against the masked check it degrades to the selective-abort variant.
+  opening reconstructs to `y` itself.
 
 ## The circuits
 
-We demonstrate both strengths on two functionalities:
+We demonstrate both strengths on two functionalities, and refer the reader to the paper to see why these circuits were selected.
 
-- **Example 1: `f(x, y) = x · y`.** The attacker inputs `x = 0`, so the opened
-  output is always `0` regardless of `y`. The leak is real, but a zero output is
-  an outcome an ideal-world adversary could also force by choosing its own input,
-  so Example 1 on its own is not yet a violation of malicious security.
+- **Example 1 - multiplicaiton:** `f(x, y) = x · y`. The attacker inputs `x = 0`, so the opened
+  output is always `0` regardless of `y`, which means that the adversary should learn nothing about the honest party's input.
+  Our two attacks allow testing whether `y = g`, and learning `y` outright respectively.
 
-- **Example 2: `f(x; (y, r)) = x · y + r`,** revealed only to P0, with `r` a
-  uniform input of the honest party. Because `r` masks the output uniformly for
-  **any** `x`, the output carries no information about `y`, yet the attack still
-  recovers `y` (or tests a guess via abort). This closes Example 1's loophole: it
-  is a genuine breach of malicious security.
+- **Example 2 - affine transformation:** `f(x; (y, r)) = x · y + r`, with the adversary inputting `x` and the honest party `(y, r)`. In the case where `r` is uniformly random, it completely masks the output, so the advcersary should learn no information about `y`. As before, in our first attack the adversary checks whether `y = g` for a guess `g`,
+and in the second the adversary recovers `y` outright.
 
 ## Frameworks
 
-Each framework is a self-contained PoC in its own directory, and each demonstrates
+We present the PoC against each framework in its own self -contained directory. Each demonstrates
 **both strengths of the attack on both circuits**, with build and run
 instructions. The frameworks differ only in the *vector* that supplies the
-inconsistent MAC keys:
+inconsistent MAC keys, which we explain in detail in their respective READMEs.
 
-- **[`mp-spdz/`](mp-spdz/)**, MP-SPDZ (MASCOT). Cross-thread: each thread
-  generates its own preprocessing, so a different MAC-key share can be used per
-  thread. See [`mp-spdz/README.md`](mp-spdz/README.md).
-- **[`scale-mamba/`](scale-mamba/)**, SCALE-MAMBA (Full Threshold). Cross-run
-  restart: the MAC-key share is re-read from disk at the start of every run. See
-  [`scale-mamba/README.md`](scale-mamba/README.md).
-- **[`fanng/`](fanng/)**, FANNG-MPC (Full Threshold). A SCALE-MAMBA fork that
-  inherits the same cross-run vector unchanged; verified on native x86 under the
-  real FHE/BGV offline phase. See [`fanng/README.md`](fanng/README.md).
+- **[`mp-spdz/`](mp-spdz/)**. Each thread in its parallelized MASCOT implementation
+  generates its own preprocessing, allowing an adversary to input different keys to dsifferent threads in the same computation.
+- **[`scale-mamba/`](scale-mamba/)**. In the full threshold implementation, a computation can be restarted across-runs. The MAC-key share is re-read from disk at the start of every run, allowing the adversary to input a different MAC key share.
+- **[`fanng/`](fanng/)**. A SCALE-MAMBA fork that inherits the same cross-run vulnerability.
+
+MP-SPDZ have been fixed in Version (cite and link version!). We have permission from the maintainers of all frameworks to make this attack public. We refer the readers to our paper for more information, including mitigation.
