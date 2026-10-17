@@ -76,7 +76,11 @@ fi
 
 CONTAINER=fanng
 FAKE="${FAKE:-0}"
-ARCH_NOAVX='-maes -mpclmul -msse4.1 -march=core2 -mtune=generic'
+# Compiler arch for the recovery runtime rebuild. Default to the native x86 box
+# (keeps the real FHE offline fast). Under linux/amd64 emulation, override with a
+# portable, no-AVX arch, e.g.
+#   ARCH='-maes -mpclmul -msse4.1 -march=core2 -mtune=generic' ./run-attack.sh ...
+ARCH="${ARCH:--march=native}"
 
 if ! docker ps --format '{{.Names}}' | grep -qx "$CONTAINER"; then
   echo "error: container '$CONTAINER' is not running."
@@ -112,7 +116,7 @@ if [ "$ATTACK" = recovery ]; then
   echo "--- Applying recovery instrumentation and rebuilding the runtime (once) ---"
   docker cp patches/offkey_recover.py "$CONTAINER":/fanng/poc/patches/offkey_recover.py >/dev/null
   docker exec "$CONTAINER" bash -lc 'python3 /fanng/poc/patches/offkey_recover.py /fanng/src/LSSS/Open_Protocol.cpp'
-  docker exec "$CONTAINER" bash -lc "make -C src ARCH='$ARCH_NOAVX' -j\$(nproc) 2>&1 | tail -2" \
+  docker exec "$CONTAINER" bash -lc "make -C src ARCH='$ARCH' -j\$(nproc) 2>&1 | tail -2" \
     || { echo 'error: runtime rebuild failed'; exit 1; }
 fi
 docker exec "$CONTAINER" bash -lc "./compile-new.sh Programs/attack_store >/dev/null 2>&1 && ./compile-new.sh Programs/$PROG >/dev/null 2>&1" \
