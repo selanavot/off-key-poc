@@ -106,9 +106,10 @@ needs the engine relaunched, which is exactly the recovery path above.
 
 ## Threat model
 
-Both parties run the same stock `Player.x`; no binary is patched for the attack. The honest party (Player 0) supplies its real input and runs the same
-programs and `-memory` flags; the sole adversarial action is Player 1 editing its
-own `Data/MKey-1.key` and `Data/Memory-P1` between the two runs.
+Both parties run the same stock `Player.x`; no binary is patched. The honest
+party (Player 0) supplies its real input and runs the same programs and `-memory`
+flags. The sole adversarial action is Player 1 editing its own `Data/MKey-1.key`
+and `Data/Memory-P1` between the two runs.
 
 ## Why FHE does not save SCALE-MAMBA
 
