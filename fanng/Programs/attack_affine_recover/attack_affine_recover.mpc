@@ -2,26 +2,36 @@
 #
 # Same affine functionality as attack_affine (f(x; (y, r)) = x*y + r, output
 # masked by the honest party's r), but instead of the one-bit selective-failure
-# test this recovers y outright from the unmasked MAC check, exactly as
-# attack_recover does for the multiplication circuit.
+# test this recovers y outright from the unmasked MAC check, like attack_recover
+# does for the multiplication circuit.
 #
-# y was stored in run 1 under the MAC key alpha. Between runs the attacker
-# (Player 1) incremented its key share (global key -> alpha+1). In run 2 P0
-# enters r and P1 enters x, so both -- and every fresh preprocessing value -- are
-# authenticated under alpha+1; only y is still under alpha.
+# SCALE-MAMBA batches every opening of a run into ONE final MAC check (the
+# unmasked Damgard et al. check). For recovery the attacker inverts that check,
+# which is only clean when the batch contains a SINGLE off-key opening. So this
+# program is arranged so the only off-key opening is the last one:
 #
-# We reveal the masked affine output z = x*y + r FIRST (it is correctly keyed, so
-# it contributes nothing to recovery and demonstrates that the output hides y),
-# then open a single standalone off-key value d = y - b LAST. That last opening
-# is the unique nopen=1 off-key check, so the recovery instrumentation inverts it
-# to y (see patches/offkey_recover.py); the driver reads the last nopen=1 line.
+#   - The affine output z = x*y2 + r is computed from values entered in run 2
+#     (x by P1, y2 and r by P0), so they are all authenticated under the restart
+#     key alpha+1. Its Beaver multiply and its reveal are therefore correctly
+#     keyed and contribute 0 to the check. y2 is the honest party's own input, so
+#     the output is the genuine affine evaluation and reveals nothing about y (it
+#     is masked by r).
+#   - The carried secret y (stored in run 1, still under alpha) is opened LAST as
+#     a single off-key value d = y - b (b a fresh alpha+1 square tuple). It is the
+#     only off-key opening, so the batched check value is t = r_last * (g - y) and
+#     the instrumentation inverts the last opening to y (see offkey_recover.py).
+#
+# Both parties run this exact program; only the attacker's own files are edited
+# between the runs, and only the attacker sets OFFKEY_RECOVER.
 y = sint.load_mem(100)                    # carried from run 1 (under alpha)
 print_ln("Player 1, please enter x:")
 x = sint.get_private_input_from(1)        # attacker's x (run 2 -> alpha+1)
+print_ln("Player 0, please enter y:")
+y2 = sint.get_private_input_from(0)       # honest party's y for the output (run 2 -> alpha+1)
 print_ln("Player 0, please enter r:")
 r = sint.get_private_input_from(0)        # honest party's mask r (64-bit; see attack_affine)
-z = x * y + r
+z = x * y2 + r
 print_ln("z = %s (masked by r; reveals nothing about y)", z.reveal())
 b, _ = sint.get_random_square()           # b: fresh mask, authenticated under alpha+1
-d = (y - b).reveal()                      # single off-key opening d = y - b (recovery)
+d = (y - b).reveal()                      # single off-key opening d = y - b, opened LAST (recovery)
 print_ln("d = %s (uniform; reveals nothing about y on its own)", d)

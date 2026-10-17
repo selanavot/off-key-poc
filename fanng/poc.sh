@@ -54,16 +54,37 @@ run_players() {   # $1=prog $2=memflag $3=p0_input $4=p1_input [$5=P1 env prefix
   pkill -9 -x PlayerBinary.x 2>/dev/null; sleep 1
   rm -f /tmp/poc_p0.log /tmp/poc_p1.log
   local p1env="${5:-}"     # e.g. "OFFKEY_RECOVER=1" -- set only on the attacker (P1)
-  # The players' own output goes to log files; the only thing on this block's
-  # stderr is bash job-control chatter ("Done"/"Aborted" on a mac_fail abort).
-  # Discard it.
+  # Each party's stdout/stderr go to its own log file; discard the backgrounded
+  # pipelines' job-control chatter on this block's stderr.
   {
     printf '%b' "$3" | stdbuf -oL -eL ./PlayerBinary.x 0 -m "$2" -f 1 ${PLAYER_FLAGS} "Programs/$1" >/tmp/poc_p0.log 2>&1 &
     local P0=$!
     printf '%b' "$4" | env $p1env stdbuf -oL -eL ./PlayerBinary.x 1 -m "$2" -f 1 ${PLAYER_FLAGS} "Programs/$1" >/tmp/poc_p1.log 2>&1 &
     local P1=$!
-    wait $P0; RC0=$?
-    wait $P1; RC1=$?
+    # A COMPLETE run: both stock players exit normally. An ABORT: "Mac Fail"
+    # appears in the logs, after which the stock players can block for MINUTES in
+    # mutual connection teardown -- long after the attack outcome (the abort, and
+    # any recovered value) is already written to the logs. Once "Mac Fail" appears
+    # we read the verdict from the logs and SIGKILL both players to reap that hung
+    # teardown. This is purely process cleanup: it happens only AFTER the MAC check
+    # has already aborted (both parties ran the unmodified binary through the
+    # failing check), it modifies neither binary, and it does not change the
+    # outcome. A clean COMPLETE run exits on its own; the loop cap bounds any hang.
+    RC0=1; RC1=1
+    local decided=0
+    for _t in $(seq 1 600); do
+      if ! kill -0 "$P0" 2>/dev/null && ! kill -0 "$P1" 2>/dev/null; then
+        wait "$P0"; RC0=$?; wait "$P1"; RC1=$?; decided=1; break   # clean COMPLETE
+      fi
+      if grep -qa "Mac Fail" /tmp/poc_p0.log /tmp/poc_p1.log 2>/dev/null; then
+        sleep 3                                 # let the logs (recovered_y, z, ...) flush
+        RC0=1; RC1=1                            # abort verdict, read from the logs
+        kill -9 "$P0" "$P1" 2>/dev/null         # reap both players' post-abort teardown
+        decided=1; break
+      fi
+      sleep 1
+    done
+    [ "$decided" = 1 ] || kill -9 "$P0" "$P1" 2>/dev/null   # safety: bound any other hang
   } 2>/dev/null
 }
 
@@ -122,12 +143,10 @@ case "$cmd" in
     python3 "$PATCHER" --data-dir "$ROOT/Data" --mkey-only $pq
     g="${arg:-0}"
     run_players attack_recover old "" "" "OFFKEY_RECOVER=1 OFFKEY_GUESS=$g"
-    # The online program opens exactly one value (d = y - b), so the online
-    # check is the unique "nopen=1" line. The FHE offline sacrifice phase also
-    # opens (correctly keyed) values, but always in large batches, so filter to
-    # nopen=1 and take the last such line (the online check runs after offline).
+    # The instrumentation inverts the last opening of each small online check.
+    # The FHE offline sacrifice phase opens only large batches (skipped), so the
+    # attack's final online check is the last OFFKEY_RECOVER line.
     rec=$(grep -a "OFFKEY_RECOVER " /tmp/poc_p1.log \
-            | grep -a " nopen=1 " \
             | sed -n 's/.*recovered_y=\([0-9-]*\).*/\1/p' | tail -1)
     if [ -n "$rec" ]; then
       echo "  RECOVERED_Y=$rec"
@@ -170,10 +189,11 @@ case "$cmd" in
     pq=""; [ "${QUIET:-0}" = 1 ] && pq="--quiet"
     python3 "$PATCHER" --data-dir "$ROOT/Data" --mkey-only $pq
     g="${arg:-0}"
-    # P0 (honest) enters r; P1 (attacker) enters x and runs OFFKEY_RECOVER=1.
-    run_players attack_affine_recover old "${AFF_R:-7}\n" "${AFF_X:-1}\n" "OFFKEY_RECOVER=1 OFFKEY_GUESS=$g"
+    # P0 (honest) enters y (for the affine output) then r; P1 (attacker) enters x
+    # and runs OFFKEY_RECOVER=1. The carried y (run 1) is recovered from the last
+    # off-key opening; y2 here is the honest party's own y for the output.
+    run_players attack_affine_recover old "${AFF_Y2:-1}\n${AFF_R:-7}\n" "${AFF_X:-1}\n" "OFFKEY_RECOVER=1 OFFKEY_GUESS=$g"
     rec=$(grep -a "OFFKEY_RECOVER " /tmp/poc_p1.log \
-            | grep -a " nopen=1 " \
             | sed -n 's/.*recovered_y=\([0-9-]*\).*/\1/p' | tail -1)
     if [ -n "$rec" ]; then
       echo "  RECOVERED_Y=$rec"

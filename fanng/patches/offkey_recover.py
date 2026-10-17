@@ -143,33 +143,34 @@ NEW = """      gfp r, temp;
             }
         }
       // Skip the large offline (sacrifice) batches: the attacker's online
-      // opening of d is a small batch, whereas the FHE offline phase opens tens
-      // of thousands of correctly keyed values at once. Logging only small
-      // batches keeps the output to the online opening(s) that carry the leak.
-      if (atk_rec && !Rlog.empty() && Rlog[0].size() <= 8)
+      // openings are a small batch, whereas the FHE offline phase opens tens of
+      // thousands of correctly keyed values at once. Logging only small batches
+      // keeps the output to the online check that carries the leak.
+      if (atk_rec && !Rlog.empty() && Rlog[0].size() >= 1 && Rlog[0].size() <= 8)
         {
-          // Unmasked check: for a single off-key opening d = y - b the opened
-          // sum for MAC equation 0 is t = r * (g - y), so y = g - t / r.
-          // g defaults to 0; OFFKEY_GUESS overrides it.
+          // Unmasked check. The attack arranges the SINGLE off-key opening to be
+          // the LAST opening in the batch (the carried y, masked by a fresh
+          // alpha+1 square tuple, opened last); every earlier opening is keyed
+          // under alpha+1 and contributes 0. So the opened sum for MAC equation 0
+          // is t = r_last * (g - y), and y = g - t / r_last. g defaults to 0;
+          // OFFKEY_GUESS overrides it. (For the multiplication-circuit recovery
+          // there is only one opening, so last == only.)
           gfp g;
           long gg= getenv(\"OFFKEY_GUESS\") ? atol(getenv(\"OFFKEY_GUESS\")) : 0;
           g.assign(gg);
-          for (unsigned int k= 0; k < Rlog[0].size(); k++)
-            {
-              gfp rinv= Rlog[0][k];
-              rinv.invert();
-              gfp yrec;
-              yrec.mul(tsum[0], rinv);
-              gfp cand;
-              cand.sub(g, yrec);
-              cerr << \"OFFKEY_RECOVER connection=\" << connection
-                   << \" nopen=\" << Rlog[0].size()
-                   << \" opening=\" << k
-                   << \" r=\" << Rlog[0][k]
-                   << \" v=\" << Vlog[k]
-                   << \" t=\" << tsum[0]
-                   << \" recovered_y=\" << cand << endl;
-            }
+          unsigned int klast= Rlog[0].size() - 1;
+          gfp rinv= Rlog[0][klast];
+          rinv.invert();
+          gfp yrec;
+          yrec.mul(tsum[0], rinv);
+          gfp cand;
+          cand.sub(g, yrec);
+          cerr << \"OFFKEY_RECOVER connection=\" << connection
+               << \" nopen=\" << Rlog[0].size()
+               << \" opening=\" << klast
+               << \" v=\" << Vlog[klast]
+               << \" t=\" << tsum[0]
+               << \" recovered_y=\" << cand << endl;
         }
       for (int j= 0; j < neqs; j++)
         {

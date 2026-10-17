@@ -122,7 +122,7 @@ fi
 docker exec "$CONTAINER" bash -lc "./compile-new.sh Programs/attack_store >/dev/null 2>&1 && ./compile-new.sh Programs/$PROG >/dev/null 2>&1" \
   || { echo "error: failed to compile the attack programs (is the runtime built? see prerequisites)"; exit 1; }
 
-poc() { docker exec -e FAKE="$FAKE" -e QUIET=1 -e AFF_X="$X" -e AFF_R="$R" "$CONTAINER" bash -lc "bash /fanng/poc/poc.sh $*"; }
+poc() { docker exec -e FAKE="$FAKE" -e QUIET=1 -e AFF_X="$X" -e AFF_R="$R" -e AFF_Y2="$REAL_Y" "$CONTAINER" bash -lc "bash /fanng/poc/poc.sh $*"; }
 
 echo
 echo "--- Run 1: honest party stores its secret y (authenticated under MAC key alpha) ---"

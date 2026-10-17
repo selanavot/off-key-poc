@@ -104,7 +104,7 @@ if [ "$CIRCUIT" = affine ]; then
 fi
 
 poc() {
-  docker exec -e FAKE="${FAKE:-0}" -e QUIET=1 -e AFF_X="$X" -e AFF_R="$R" \
+  docker exec -e FAKE="${FAKE:-0}" -e QUIET=1 -e AFF_X="$X" -e AFF_R="$R" -e AFF_Y2="$REAL_Y" \
     "$CONTAINER" bash -lc "bash /scale/poc/poc.sh $*"
 }
 
