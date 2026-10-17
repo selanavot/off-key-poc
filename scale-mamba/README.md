@@ -24,7 +24,7 @@ docker build --platform linux/amd64 -t scale-mamba-attack .   # one-time, ~15-20
 # Same attack with mocked preprocessing for faster iteration
 FAKE=1 ./run-attack.sh 5 5 
 
-# STRONGER attack: recover the secret outright in ONE run (Section 4.4)
+# STRONGER attack: recover the secret outright in ONE run (no guessing)
 ./run-recovery.sh 12345      # attacker prints y = 12345, no guessing
 FAKE=1 ./run-recovery.sh 42  # same, fast trusted-dealer offline
 
@@ -39,17 +39,17 @@ is real FHE/BGV (minutes per run under x86 emulation); `FAKE=1` swaps in
 SCALE-MAMBA's trusted-dealer offline, which keeps the attack identical and only
 bypasses the FHE path, so the FHE run stays the canonical proof below.
 
-`run-recovery.sh [secret]` is the stronger, single-run input-recovery variant of
-Section 4.4: it recovers `y` in full rather than testing one guess. It relies on
+`run-recovery.sh [secret]` is the stronger, single-run input-recovery variant:
+it recovers `y` in full rather than testing one guess. It relies on
 SCALE-MAMBA using the *unmasked* MAC check; see
-[The input-recovery math](#the-input-recovery-math-section-44) below.
+[The input-recovery math](#the-input-recovery-math) below.
 
-`run-affine.sh [guess] [secret] [x]` is Example 2 of the paper: private affine
-evaluation `f(x; (y, r)) = x*y + r`. The honest party holds `y` (run 1) and a
-mask `r` (run 2); the attacker holds `x`. Example 2's privacy wants `r` uniform
-over the whole field, but the attack is independent of `r`'s distribution, and
+`run-affine.sh [guess] [secret] [x]` is the private affine evaluation
+(**Example 2**): `f(x; (y, r)) = x*y + r`. The honest party holds `y` (run 1) and a
+mask `r` (run 2); the attacker holds `x`. Privacy wants `r` uniform over the whole
+field, but the attack is independent of `r`'s distribution, and
 SCALE-MAMBA's clear input path is 64-bit, so `r` is a uniform 64-bit mask —
-ample for the small `x` used here (the full-field mask is the paper's object).
+ample for the small `x` used here (a full-field uniform mask is the theoretical ideal).
 The output `x*y+r` is masked by `r` and reveals nothing about `y` — yet
 complete-vs-abort still tests whether `y` equals the guess. Unlike
 Example 1 (`x = 0`, whose zero output an ideal-world adversary could also
@@ -65,7 +65,7 @@ the same restart tampering as `run-attack.sh`; no recovery instrumentation.
 |---|---|
 | `Dockerfile` | Pinned SCALE-MAMBA build (AVX patch, variant 18, attack programs) |
 | `patches/avx_memcpy.h` | AVX path `#ifdef`-guarded for no-AVX emulation. Makes local dev on MAC easier. |
-| `patches/offkey_recover.py` | Env-gated (`OFFKEY_RECOVER`) instrumentation of the unmasked MAC check, so the attacker inverts the opened check value to recover `y` (Section 4.4). Attacker-only at runtime; no effect without the variable. |
+| `patches/offkey_recover.py` | Env-gated (`OFFKEY_RECOVER`) instrumentation of the unmasked MAC check, so the attacker inverts the opened check value to recover `y`. Attacker-only at runtime; no effect without the variable. |
 | `Programs/attack_store/attack_store.mpc` | Run 1: P0 inputs `y`, store in `Ms[100]` |
 | `Programs/attack_open/attack_open.mpc` | Run 2 (selective failure): load `y`, reveal `z = x·y` with `x = 0` |
 | `Programs/attack_recover/attack_recover.mpc` | Run 2 (recovery): load `y`, open a single off-key value `d = y - b` |
@@ -184,7 +184,7 @@ opening `v − a`) is checked in run 2, the MAC residual is:
 The check passes **iff `g = v`**: a direct equality test of the attacker's guess
 against the honest secret.
 
-## The input-recovery math (Section 4.4)
+## The input-recovery math
 
 The selective-failure attack above learns only one bit (pass/abort). The stronger
 attack learns `v` outright, because SCALE-MAMBA uses the *unmasked* SPDZ MAC check
@@ -235,6 +235,4 @@ FHE/BGV offline both recover `y`, confirming FHE does not bind the key across ru
 The instrumentation (`patches/offkey_recover.py`) performs exactly this inversion,
 gated on `OFFKEY_RECOVER`, which only the malicious party sets. It reads state the
 party already has and changes no message sent nor the accept/abort decision, so an
-honest party running the same binary without the variable is unaffected. This is
-the difference the paper draws between the masked check (which reduces the attack
-to selective failure) and the unmasked check (which leaks the input outright).
+honest party running the same binary without the variable is unaffected. This is the distinction between the masked MAC check (which reduces the attack to selective failure) and the unmasked check (which leaks the input outright).

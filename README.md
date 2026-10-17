@@ -140,7 +140,7 @@ self-contained PoCs for the other evaluated frameworks:
 - [`scale-mamba/`](scale-mamba/) — **SCALE-MAMBA** (Full Threshold). The off-key
   material arises across a stop-and-restart (the MAC-key share is re-read from
   disk each run), rather than across threads. Includes selective failure,
-  Section 4.4 input recovery, and the Example 2 private affine evaluation. See
+  full input recovery, and the Example 2 private affine evaluation. See
   [`scale-mamba/README.md`](scale-mamba/README.md).
 
 (FANNG-MPC, a SCALE-MAMBA fork, is added separately.)
