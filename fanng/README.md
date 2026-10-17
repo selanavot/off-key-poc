@@ -1,9 +1,9 @@
 # Cross-Run MAC-Key Inconsistency in FANNG-MPC (Full Threshold)
 
-FANNG-MPC is a fork of SCALE-MAMBA and inherits the cross-run MAC-key
-selective-failure attack unchanged. **For the full analysis see
-[`../scale-mamba/README.md`](../scale-mamba/README.md).** This folder is just the
-FANNG-specific proof of concept, with the run knobs FANNG needs.
+FANNG-MPC is a fork of SCALE-MAMBA and inherits the cross-run off-key attack
+unchanged, in both the selective-failure and full-recovery variants. **For the
+full analysis see [`../scale-mamba/README.md`](../scale-mamba/README.md).** This
+folder is just the FANNG-specific proof of concept, with the run knobs FANNG needs.
 
 > **What's bundled here.** FANNG-MPC's build harness ([`docker/`](docker/)) and
 > the no-AVX emulation patch ([`patches/avx_memcpy.h`](patches/avx_memcpy.h)) are
@@ -25,11 +25,16 @@ and stdin IO; `patches/avx_memcpy.h` guards the AVX path for emulation):
 docker/run.sh build && docker/run.sh up && docker/run.sh progs
 ```
 
-Then, from this folder:
+Then, from this folder, the attack driver takes the circuit and attack type as
+flags:
+
+```
+run-attack.sh --circuit mult|affine --attack selective|recovery --real-y N [--guess-of-y G] [--x X]
+```
+
+For example:
 
 ```bash
-# run-attack.sh --circuit mult|affine --attack selective|recovery --real-y N [--guess-of-y G] [--x X]
-
 # Multiplication circuit f(x, y) = x*y (the attacker fixes x = 0):
 ./run-attack.sh --circuit mult --attack selective --guess-of-y 5 --real-y 5    # completes iff guess == y
 ./run-attack.sh --circuit mult --attack selective --guess-of-y 5 --real-y 4    # aborts, so y != 5
@@ -39,7 +44,7 @@ Then, from this folder:
 ./run-attack.sh --circuit affine --attack selective --guess-of-y 1 --real-y 1  # completes iff y == 1
 ./run-attack.sh --circuit affine --attack recovery  --real-y 987654 --x 3      # recovers y, output stays masked
 
-# Prepend FAKE=1 for the fast, low-memory trusted-dealer offline, e.g.
+# Prepend FAKE=1 for the fast, low-memory trusted-dealer offline:
 FAKE=1 ./run-attack.sh --circuit mult --attack selective --guess-of-y 5 --real-y 5
 ```
 
@@ -64,29 +69,22 @@ TinyOT/OT production (the attack is purely arithmetic, so the binary engine is
 unused, and this trims the real-FHE peak), and **`SCALE_IO_SIMPLE=1`** gives
 stdin/stdout IO so the guess can be fed on stdin.
 
-## Stronger attack: full input recovery
+## Full input recovery
 
-`--attack recovery` upgrades the selective-failure oracle (one bit per run) to
-**full input recovery in a single run, no guessing**, exactly as in
-[`../scale-mamba/README.md`](../scale-mamba/README.md) ("The input-recovery
-math"). FANNG inherits SCALE-MAMBA's **unmasked** SPDZ MAC check verbatim:
-`Open_Protocol::RunOpenCheck` commits to and opens each party's own check share
-`tau_i`, so the batched opened sum `t = sum_k r_k (M_k - alpha' v_k)` is visible.
-The recovery program opens a single off-key value `d = y - b` on its own (a fresh
-square-tuple mask `b` under `alpha+1`, carried `y` under `alpha`), so
-`t = r*(g - y)` with a single attacker-known coefficient `r`, and the attacker
-inverts it to `y = g - t/r`. The opened `d` is uniform and leaks nothing; the
-secret leaks through the unmasked check value, before the abort. With `g = 0` the
-only between-runs edit is `alpha_1 -> alpha_1 + 1`.
+FANNG inherits SCALE-MAMBA's **unmasked** SPDZ MAC check verbatim, so `--attack
+recovery` works exactly as there: the attacker reconstructs the off-key opening's
+check value and reads `y` in a single run, with no guessing. SCALE-MAMBA and FANNG
+batch a run's openings into one MAC check, so the recovery program arranges the
+off-key `d = y - b` to be the only off-key opening in that batch (opened last), and
+the instrumentation inverts it to `y`. See
+[`../scale-mamba/README.md`](../scale-mamba/README.md) for the mechanism and the
+accompanying paper for the full derivation.
 
 Unlike the selective attacks (which need no source change), the recovery attacks
-instrument the check, so `run-attack.sh` applies `patches/offkey_recover.py` to
-the mounted source and **rebuilds the runtime once** before running. The
-instrumentation is gated on `OFFKEY_RECOVER` (set only
-on the attacker, Player 1); an honest party running the same binary without the
-variable is unaffected. Under real FHE the offline sacrifice phase also opens
-values, but only in large correctly keyed batches, so the recovery line to read
-is the unique `nopen=1` online opening (the driver filters on that).
+instrument the check, so `run-attack.sh` applies `patches/offkey_recover.py` to the
+mounted source and **rebuilds the runtime once** before running. The
+instrumentation is gated on `OFFKEY_RECOVER` (set only by the attacker, Player 1);
+an honest party running the same binary without it is unaffected.
 
 ## Files
 

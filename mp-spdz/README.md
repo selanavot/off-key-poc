@@ -1,6 +1,6 @@
 # Cross-Thread MAC-Key Inconsistency in MP-SPDZ (MASCOT)
 
-A proof-of-concept off-key attack on **MP-SPDZ**'s MASCOT protocol. In this attach, we show how a malicious
+A proof-of-concept off-key attack on **MP-SPDZ**'s MASCOT protocol. In this attack, we show how a malicious
 party breaks the confidentiality of an honest party's secret input.
 
 **Off-key vector: cross-thread.** In MP-SPDZ's multi-threaded execution each
@@ -13,27 +13,37 @@ check, enabling the Off-Key attack.
 
 ## Threat model
 
-The honest party runs a simple, multi-threaded `.mpc` program, and the honest party runs a
-stock `mascot-party.x` in its own docker container. Only the attacker's binary is patched,
-in two places: the per-thread key increment in `Processor/Machine.hpp`, and the
-guess added to the honest input's MAC before the multiplication gate in
+The honest party runs a simple, multi-threaded `.mpc` program on a stock
+`mascot-party.x` in its own Docker container. Only the attacker's binary is
+patched, in two places: the per-thread key increment in `Processor/Machine.hpp`,
+and the guess added to the honest input's MAC before the multiplication gate in
 `Processor/Processor.hpp`.
 
 ## Demonstrated Attacks
 
-The attack running script allows running both an input recovery attack, and the more robust selective failure attack against the multiplication and affine transformation circuits (see README LINK).
+The attack driver runs both an input-recovery attack and the more robust
+selective-failure attack, against the multiplication and affine-transformation
+circuits (see [the repository overview](../README.md) for how the two attacks and
+two circuits relate).
 
 ## How to run
 
-From this directory (`mp-spdz/`), run:
+From this directory (`mp-spdz/`), first build MP-SPDZ once (requires Docker):
 
 ```bash
-# Build unmodified MP-SPDZ at the pinned pre-fix commit (one-time, ~10 min). Requires Docker
+# Build unmodified MP-SPDZ at the pinned pre-fix commit (one-time, ~10 min)
 docker build -t mpspdz:built .
+```
 
-### You must split the main instruction (below), to the examples (lower down). DO THAT
-# run-attack.sh --circuit mult|affine --attack selective|recovery --real-y N [--guess-of-y G] [--x X]
+The attack driver takes the circuit and attack type as flags:
 
+```
+run-attack.sh --circuit mult|affine --attack selective|recovery --real-y N [--guess-of-y G] [--x X]
+```
+
+For example:
+
+```bash
 # Multiplication circuit f(x, y) = x*y (the attacker fixes x = 0):
 ./run-attack.sh --circuit mult --attack selective --guess-of-y 7 --real-y 7   # completes iff guess == y
 ./run-attack.sh --circuit mult --attack selective --guess-of-y 7 --real-y 3   # aborts, so y != 7
