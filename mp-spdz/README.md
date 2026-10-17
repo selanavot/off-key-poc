@@ -31,34 +31,34 @@ Requires Docker. Run from this directory (`mp-spdz/`):
 # Build unmodified MP-SPDZ at the pinned pre-fix commit (one-time, ~10 min)
 docker build -t mpspdz:built .
 
-# Selective abort: correct vs. wrong guess (one bit of y)
-./run-attack.sh 7 7          # guess right -> succeeds -> learns y = 7
-./run-attack.sh 7 3          # guess wrong -> aborts   -> learns y != 7
+# run-attack.sh --circuit mult|affine --attack selective|recovery --real-y N [--guess-of-y G] [--x X]
 
-# Full secret recovery: recover y in ONE run, no guessing
-./run-recovery.sh 42         # attacker prints "y = 42"
+# Multiplication circuit f(x, y) = x*y (the attacker fixes x = 0):
+./run-attack.sh --circuit mult --attack selective --guess-of-y 7 --real-y 7   # completes iff guess == y
+./run-attack.sh --circuit mult --attack selective --guess-of-y 7 --real-y 3   # aborts, so y != 7
+./run-attack.sh --circuit mult --attack recovery  --real-y 42                 # recovers y = 42, no guessing
 
-# Example 2: private affine evaluation f(x;(y,r)) = x·y + r, output to P0 only
-./run-affine.sh 42 1         # recovery: recovers y = 42 while the output stays uniform
-GUESS=1 ./run-affine.sh 1 1  # selective abort: completes iff y == 1
+# Affine circuit f(x; (y, r)) = x*y + r to P0, output masked by a uniform r:
+./run-attack.sh --circuit affine --attack selective --guess-of-y 1 --real-y 1 # completes iff y == 1
+./run-attack.sh --circuit affine --attack recovery  --real-y 42 --x 3         # recovers y = 42, output stays uniform
 ```
 
-Each run starts two Docker containers on a private network: an `honest` party
-running the stock `mascot-party.x`, and an `attacker` party whose binary is patched
-at runtime. Both parties run the same unmodified `.mpc` program; only the
-attacker's binary differs.
+`run-attack.sh` starts two Docker containers on a private network: an `honest`
+party running the stock `mascot-party.x`, and an `attacker` party whose binary is
+patched at runtime. `--circuit` picks the functionality and `--attack` the
+strength: `selective` needs `--guess-of-y` and leaks one bit (complete vs abort);
+`recovery` reads `y` outright from the unmasked MAC check with no guessing. Both
+parties run the same unmodified `.mpc` program; only the attacker's binary differs.
 
 ## Files
 
 | File | What |
 |---|---|
 | `Dockerfile` | Builds unmodified MP-SPDZ at the pinned pre-fix commit |
-| `simple_threaded_mul.mpc` | Example 1 program `x·y` |
-| `affine_eval.mpc` | Example 2 program `x·y + r` |
+| `simple_threaded_mul.mpc` | Multiplication circuit `x·y` (Example 1) |
+| `affine_eval.mpc` | Affine circuit `x·y + r` (Example 2) |
 | `patch_guess.py` | The attacker's binary patches, applied at runtime |
-| `run-attack.sh` | Selective-abort driver (Example 1): `[guess] [secret]` |
-| `run-recovery.sh` | Input-recovery driver (Example 1): `[secret]` |
-| `run-affine.sh` | Example 2 driver: `[secret] [x]`, `GUESS=1` for selective abort |
+| `run-attack.sh` | The attack driver (circuit and attack type are flags; see above) |
 
 ## The program
 
