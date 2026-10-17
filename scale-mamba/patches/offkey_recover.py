@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Instrument SCALE-MAMBA's MAC check for the Section 4.4 input-recovery attack.
+"""Instrument SCALE-MAMBA's MAC check for the input-recovery attack.
 
 SCALE-MAMBA uses the *unmasked* SPDZ MAC check (Damgard et al., 2013): in
 `Open_Protocol::RunOpenCheck` each party commits to and opens its own share
@@ -19,8 +19,8 @@ is `M_d - (alpha+1) d = g - y`, so
 Because the check is unmasked, the malicious party already holds every `tau_i`
 after the commit-and-open, and it drew the same public coefficients `r_k`, so it
 can invert this and read `y` outright -- even though the check then aborts and
-the opened output is independent of y. This realizes the stronger attack of
-Section 4.4, upgrading the selective-failure oracle to full input recovery.
+the opened output is independent of y. This realizes the stronger attack,
+upgrading the selective-failure oracle to full input recovery.
 
 The instrumentation is gated on the environment variable OFFKEY_RECOVER, which
 only the malicious party sets. It reads state the party already has and never
@@ -85,7 +85,7 @@ OLD = """      gfp r, temp;
         }"""
 
 NEW = """      gfp r, temp;
-      // ATTACK (Section 4.4 input recovery): when OFFKEY_RECOVER is set the
+      // ATTACK (input recovery): when OFFKEY_RECOVER is set the
       // malicious party records the public batching coefficients r and the
       // opened values v so it can invert the unmasked check value below. This
       // only reads state the party already holds and changes no message sent

@@ -21,8 +21,8 @@
 # over [0, 2^64). This does not span the ~128-bit field, but it does not matter
 # for this PoC: the off-key attack (complete-vs-abort, and the recovery variant)
 # is entirely independent of r's distribution, and 2^64 comfortably exceeds the
-# small x used in the demo so the shown output still hides y. The full-field
-# uniform mask is the paper's theoretical object, not something the attack needs.
+# small x used in the demo so the shown output still hides y. A full-field
+# uniform mask is the theoretical ideal, not something the attack needs.
 #
 # Both parties run this exact same program; only the attacker's own files are
 # edited between the runs.

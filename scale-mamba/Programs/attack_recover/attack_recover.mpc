@@ -1,6 +1,6 @@
-# PoC run 2 (-memory old), STRONGER Section 4.4 variant: recover y outright.
+# PoC run 2 (-memory old), STRONGER variant: recover y outright.
 #
-# Section 4.4 analyses "checking d = y - b on its own": with an off-key mask b
+# The analysis is "checking d = y - b on its own": with an off-key mask b
 # (fresh, authenticated under alpha+1) and the carried secret y (authenticated
 # under alpha), the unmasked MAC check opens the value d*(alpha+1) - m_d = g - y.
 # SCALE-MAMBA uses exactly that unmasked check, so the attacker reads y directly.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Cross-run MAC-key-inconsistency STRONGER attack on SCALE-MAMBA Full Threshold:
-# FULL INPUT RECOVERY in a single run (Section 4.4).
+# FULL INPUT RECOVERY in a single run.
 #
 # run-attack.sh is the selective-failure variant: the attacker guesses y and
 # learns one bit (right/wrong) from complete-vs-abort. This script is the

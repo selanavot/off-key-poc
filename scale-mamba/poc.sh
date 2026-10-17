@@ -103,7 +103,7 @@ case "$cmd" in
     report; exit $?
     ;;
   recover)
-    # Section 4.4 stronger attack: recover y outright from the unmasked check.
+    # Stronger attack: recover y outright from the unmasked check.
     # Only the MAC-key edit is needed (alpha_1 += 1); no guess. The attacker (P1)
     # runs with OFFKEY_RECOVER=1 so its own MAC check inverts the opened value.
     # arg is an optional guess offset g (default 0), passed via OFFKEY_GUESS.

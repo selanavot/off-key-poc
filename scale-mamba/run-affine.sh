@@ -29,7 +29,7 @@ X="${3:-1}"
 # Honest party's mask r. Example 2's privacy wants r uniform over the whole
 # field, but the attack is independent of r's distribution, and SCALE-MAMBA's
 # clear input path is only 64-bit, so we sample r uniformly over [0, 2^64) --
-# ample for the small x used here. (The full-field mask is the paper's object.)
+# ample for the small x used here. (A full-field uniform mask is the theoretical ideal.)
 R=$(python3 -c "import secrets; print(secrets.randbits(64))")   # 64-bit uniform mask r
 IMAGE=scale-mamba-attack
 CONTAINER=scale-mamba-affine-run
