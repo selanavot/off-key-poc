@@ -24,6 +24,14 @@ Both attack strengths run on both circuits, selected by flags to `run-attack.sh`
 
 > **Fixed upstream in MP-SPDZ [v0.4.3](https://github.com/data61/MP-SPDZ/commit/982e91e7a378) (July 2026); this PoC targets the earlier pinned commit [`58d2739`](https://github.com/data61/MP-SPDZ/commit/58d2739ac251262c0bd6034f7fc7d0666a6b1e2c).**
 
+## Threat model
+
+Both parties run the same unmodified `.mpc` program, and the honest party runs a
+stock `mascot-party.x` with no patches. Only the attacker's own binary is patched,
+in two places: the per-thread key increment in `Processor/Machine.hpp`, and the
+guess added to the honest input's MAC before the multiplication gate in
+`Processor/Processor.hpp`.
+
 ## How to run
 
 Requires Docker. Run from this directory (`mp-spdz/`):
@@ -104,9 +112,8 @@ def worker():
 Here `y` is taken on the main thread (key `α`) while `x`, `r`, and the triple are
 on the worker thread (key `α+1`). Because `r` is uniform the output is uniform for
 any `x`, so it reveals nothing about `y`, which makes the leak a genuine
-malicious-security violation rather than a simulatable one. The key assignment and
-why it is needed are detailed in [Example 2](#example-2-private-affine-evaluation)
-below.
+malicious-security violation rather than a simulatable one. See
+[How it works](#how-it-works) for why the key assignment is needed.
 
 ## How it works
 
@@ -122,75 +129,25 @@ Thread 0: reads α,   base OTs with key α
 Thread 1: reads α+1, base OTs with key α+1
 ```
 
-Both threads' triples still pass the offline sacrifice check, because each batch is
-verified in isolation against its own key, and there is no cross-thread check that
-the keys agree. At end-of-tape each worker thread runs its own MAC check on the
-values it opened, under its own key, before joining the main thread. The Beaver
-multiplication opens the mask values `ε = x − a` and `δ = y − b`, so these are
-checked under the worker key `α + 1`, not the main thread's `α`.
+Both threads' triples still pass the offline sacrifice check (each batch is
+verified in isolation against its own key, with no cross-thread consistency check).
+At end-of-tape the worker thread runs its own MAC check, under `α + 1`, on the
+values it opened, including the Beaver masks `ε = x − a` and `δ = y − b`. The
+carried secret `y` was authenticated under `α`, so the opening `δ = y − b` mixes
+keys, and that is what the attack exploits:
 
-## The selective-abort math
+- **Selective abort:** the attacker adds a guess `g` to `y`'s MAC, so the check
+  passes iff `g = y`. With `x = 0` the output is always `0`, so `y` leaks only
+  through pass versus abort.
+- **Full secret recovery:** MP-SPDZ's default check is the *unmasked* Damgard et
+  al. (2013) check, in which every party opens its own check share. The attacker
+  reconstructs the off-key opening's check value and reads `y` directly, with no
+  guess; the check then aborts, but the value was already opened.
+- **Example 2 (affine):** the output `x·y + r` is masked by the honest party's
+  uniform `r`, so it reveals nothing about `y` for any `x`, which makes the leak a
+  genuine malicious-security violation. Here `x ≠ 0`, so `x`, `r`, and the triple
+  are input on the worker thread (key `α + 1`) while `y` stays on the main thread
+  (key `α`); only `δ = y − b` mixes keys. `run-attack.sh` samples `r` as 256
+  uniform bits reduced modulo the field prime.
 
-The attacker (party 0) inputs `x = 0` and guesses `y = g`. Before the
-multiplication on the worker thread, it adds `g` to its share of `y`'s MAC. With
-the worker key incremented to `α + 1`:
-
-```
-honest MAC share:          m_1 = α_1 · y
-attacker MAC share (+g):   m_0 = α_0 · y + g
-attacker key share (+1):   α_0 + 1
-
-check:  (m_0 + m_1) − (α_0 + 1 + α_1) · y  =  g − y
-```
-
-The check passes iff `g = y`. The output is always `0` (since `x = 0`), so the
-attacker learns `y` only from pass versus abort.
-
-## The input-recovery math
-
-MP-SPDZ's default check (`Protocols/MAC_Check.hpp`) is the *unmasked* Damgard et
-al. (2013) check: for each opened value `v`, every party commits to and then opens
-its own check share `δ_i = v·α_i − m_{v,i}`, so a participant reconstructs
-
-```
-Σ_i δ_i = v·α − m_v
-```
-
-for every opened value. No guess is needed. The worker opens `d = y − b` under key
-`α + 1`, where `y` was authenticated under `α` and `b` is a fresh triple mask under
-`α + 1`, so the opened value on that check is
-
-```
-d·(α + 1) − m_d = (y − b)(α + 1) − (α·y − (α + 1)·b) = y
-```
-
-`--attack recovery` reads `y` straight off this value. The check then aborts (the
-value is nonzero), but recovery already happened, since the check shares are opened
-before the abort decision, and the opened output `x·y = 0` still reveals nothing.
-Adding a guess `g` to `y`'s MAC instead recovers `y − g`; with `g = 0` it is `y`.
-
-## Example 2: private affine evaluation
-
-`affine_eval.mpc` computes `f(x; (y, r)) = x·y + r` with `r` a uniform input of P1
-and the result revealed only to P0. Because `r` masks the output uniformly for any
-`x`, the output reveals nothing about `y`, yet the attack still recovers `y` (or
-tests `y = 1` via abort).
-
-The one structural difference from Example 1 is the key assignment. With `x ≠ 0`,
-the opening `ε = x − a` must reconstruct consistently, so `x` has to be
-authenticated under the worker key `α + 1`, the same key as the triple; otherwise
-`ε` reconstructs to `x ≠ 0` and aborts regardless of `y`. The program takes `y` on
-the main thread (key `α`) and `x`, `r`, and the one-sided-output mask on the worker
-thread (key `α + 1`), so MP-SPDZ input files are per thread
-(`Input-P<i>-<thread>`). Only the `d = y − b` opening then mixes keys, so it is the
-sole off-key value. For the affine circuit `run-attack.sh` samples `r` as 256
-uniform bits reduced modulo the field prime; the attack itself is independent of
-`r`'s distribution.
-
-## Threat model
-
-Both parties run the same unmodified `.mpc` program, and the honest party runs a
-stock `mascot-party.x` with no patches. Only the attacker's own binary is patched,
-in two places: the per-thread key increment in `Processor/Machine.hpp`, and the
-guess added to the honest input's MAC before the multiplication gate in
-`Processor/Processor.hpp`.
+See the accompanying paper for the full derivation and security analysis.
