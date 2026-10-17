@@ -61,9 +61,13 @@ parties run the same unmodified `.mpc` program; only the attacker's binary diffe
 | `patch_guess.py` | The attacker's binary patches, applied at runtime |
 | `run-attack.sh` | The attack driver (circuit and attack type are flags; see above) |
 
-## The program
+## The circuits
 
-`simple_threaded_mul.mpc` is a standard multi-threaded MPC program (Example 1):
+Both circuits are standard multi-threaded MP-SPDZ programs: inputs are taken on
+the main thread or the worker thread, and the worker does the arithmetic. Both
+parties run the exact program unmodified.
+
+**Example 1, multiplication** (`simple_threaded_mul.mpc`): `f(x, y) = x·y`.
 
 ```python
 x = MemValue(sint.get_input_from(0))   # party 0's input
@@ -78,10 +82,31 @@ program.join_tape(program.run_tape(tape, 0))
 print_ln('x * y = %s', result[0].reveal())
 ```
 
-The main thread takes inputs, a worker thread computes, the main thread reveals.
 This is the standard MP-SPDZ pattern, shared by programs such as `vickrey.mpc`,
 `idash_train.mpc`, and `bankers_bonus.mpc`, and by anything using
-`@for_range_multithread`. Both parties run this exact program unmodified.
+`@for_range_multithread`. The attacker inputs `x = 0`, so the opened output is
+always `0` and reveals nothing about `y`.
+
+**Example 2, affine** (`affine_eval.mpc`): `f(x; (y, r)) = x·y + r`, revealed only
+to P0, with `r` a uniform input of the honest party.
+
+```python
+y = MemValue(sint.get_input_from(1))   # P1's y, main thread (key α)
+
+def worker():
+    x = sint.get_input_from(0)         # P0's x, worker thread (key α+1)
+    r = sint.get_input_from(1)         # P1's r, worker thread (key α+1)
+    out = x * y.read() + r             # Beaver multiply under α+1
+    res = out.reveal_to(0)             # one-sided output, mask known only to P0
+    print_ln_to(0, 'x*y+r = %s', res)  # only P0 sees this
+```
+
+Here `y` is taken on the main thread (key `α`) while `x`, `r`, and the triple are
+on the worker thread (key `α+1`). Because `r` is uniform the output is uniform for
+any `x`, so it reveals nothing about `y`, which makes the leak a genuine
+malicious-security violation rather than a simulatable one. The key assignment and
+why it is needed are detailed in [Example 2](#example-2-private-affine-evaluation)
+below.
 
 ## How it works
 
