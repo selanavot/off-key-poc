@@ -61,18 +61,11 @@ FAKE=1 ./run-attack.sh --circuit mult --attack selective --guess-of-y 5 --real-y
 
 `run-attack.sh` runs the honest store (run 1) and the attacker's restart (run 2),
 then reports the result. `--circuit` picks the functionality and `--attack` the
-strength: `selective` needs `--guess-of-y` and leaks one bit (complete vs abort);
+strength: `selective` needs `--guess-of-y` and leaks one bit (complete vs abort), which reveals whether the guess was correct.
 `recovery` reads `y` outright from the unmasked MAC check with no guessing. The
-default offline is real FHE/BGV (minutes per run under emulation); `FAKE=1` swaps
-in SCALE-MAMBA's trusted-dealer offline, which keeps the attack identical and only
-bypasses the FHE path, so the real-FHE run is the canonical demonstration.
 
-For the affine circuit the honest party holds `y` and a mask `r`, and the attacker
-holds `x`. The output `x*y + r` is masked by `r`, so it reveals nothing about `y`;
-unlike the multiplication circuit (whose `x = 0` output is trivially `0`), the leak
-there is a genuine violation of malicious security. SCALE-MAMBA's clear input path
-is 64-bit, so `r` is a uniform 64-bit mask; the attack is independent of `r`'s
-distribution.
+By default, the offline phase uses the real FHE/BGV preprocessing, which takes minutes per run under emulation.
+For a faster run, use the flag `FAKE=1`, which uses SCALE-MAMBA's trusted-dealer for the preprocessing phase. The attack remains identical.
 
 ## Files
 
