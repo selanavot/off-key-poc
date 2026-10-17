@@ -1,45 +1,37 @@
 # Cross-Thread MAC-Key Inconsistency in MP-SPDZ (MASCOT)
 
-A proof-of-concept off-key attack on **MP-SPDZ**'s MASCOT protocol: a malicious
-party breaks the confidentiality of an honest party's secret input, while the
-opened output reveals nothing. The honest party runs an **unmodified**
-`mascot-party.x` in a separate Docker container; only the attacker's binary is
-patched. MASCOT runs over a 128-bit prime field (the MP-SPDZ default).
+A proof-of-concept off-key attack on **MP-SPDZ**'s MASCOT protocol. In this attach, we show how a malicious
+party breaks the confidentiality of an honest party's secret input.
 
 **Off-key vector: cross-thread.** In MP-SPDZ's multi-threaded execution each
 thread generates its own preprocessing, so a malicious party can use a different
-MAC-key share per thread. Shares from different threads then meet in the same MAC
-check, with no cross-thread consistency check to catch it: the main thread uses
-key `α` and the worker thread uses `α + 1`.
-
-Both attack strengths run on both circuits, selected by flags to `run-attack.sh`
-(`--attack selective|recovery`, `--circuit mult|affine`):
-
-- **Selective abort** (`--attack selective`): the attacker guesses `y`, and the
-  check passes only if the guess was right, leaking one bit per run.
-- **Full secret recovery** (`--attack recovery`): the attacker reads `y` outright
-  in a single run, with no guessing, from the value opened by the unmasked MAC check.
-- **Example 2** (`--circuit affine`): the same two attacks on the affine
-  functionality `f(x; (y, r)) = x·y + r`, whose output is masked by a uniform `r`.
+MAC-key share per thread. In this attack, the adversary causes the main thread to use the normal
+key `α` and the worker thread uses `α + 1`. Shares from different threads then meet in the same MAC
+check, enabling the Off-Key attack.
 
 > **Fixed upstream in MP-SPDZ [v0.4.3](https://github.com/data61/MP-SPDZ/commit/982e91e7a378) (July 2026); this PoC targets the earlier pinned commit [`58d2739`](https://github.com/data61/MP-SPDZ/commit/58d2739ac251262c0bd6034f7fc7d0666a6b1e2c).**
 
 ## Threat model
 
-Both parties run the same unmodified `.mpc` program, and the honest party runs a
-stock `mascot-party.x` with no patches. Only the attacker's own binary is patched,
+The honest party runs a simple, multi-threaded `.mpc` program, and the honest party runs a
+stock `mascot-party.x` in its own docker container. Only the attacker's binary is patched,
 in two places: the per-thread key increment in `Processor/Machine.hpp`, and the
 guess added to the honest input's MAC before the multiplication gate in
 `Processor/Processor.hpp`.
 
+## Demonstrated Attacks
+
+The attack running script allows running both an input recovery attack, and the more robust selective failure attack against the multiplication and affine transformation circuits (see README LINK).
+
 ## How to run
 
-Requires Docker. Run from this directory (`mp-spdz/`):
+From this directory (`mp-spdz/`), run:
 
 ```bash
-# Build unmodified MP-SPDZ at the pinned pre-fix commit (one-time, ~10 min)
+# Build unmodified MP-SPDZ at the pinned pre-fix commit (one-time, ~10 min). Requires Docker
 docker build -t mpspdz:built .
 
+### You must split the main instruction (below), to the examples (lower down). DO THAT
 # run-attack.sh --circuit mult|affine --attack selective|recovery --real-y N [--guess-of-y G] [--x X]
 
 # Multiplication circuit f(x, y) = x*y (the attacker fixes x = 0):
@@ -55,7 +47,7 @@ docker build -t mpspdz:built .
 `run-attack.sh` starts two Docker containers on a private network: an `honest`
 party running the stock `mascot-party.x`, and an `attacker` party whose binary is
 patched at runtime. `--circuit` picks the functionality and `--attack` the
-strength: `selective` needs `--guess-of-y` and leaks one bit (complete vs abort);
+strength: `selective` needs `--guess-of-y` and leaks one bit (complete vs abort) which signifies whether the guess was correct;
 `recovery` reads `y` outright from the unmasked MAC check with no guessing. Both
 parties run the same unmodified `.mpc` program; only the attacker's binary differs.
 
@@ -137,17 +129,10 @@ carried secret `y` was authenticated under `α`, so the opening `δ = y − b` m
 keys, and that is what the attack exploits:
 
 - **Selective abort:** the attacker adds a guess `g` to `y`'s MAC, so the check
-  passes iff `g = y`. With `x = 0` the output is always `0`, so `y` leaks only
-  through pass versus abort.
+  passes iff `g = y`.
 - **Full secret recovery:** MP-SPDZ's default check is the *unmasked* Damgard et
   al. (2013) check, in which every party opens its own check share. The attacker
   reconstructs the off-key opening's check value and reads `y` directly, with no
   guess; the check then aborts, but the value was already opened.
-- **Example 2 (affine):** the output `x·y + r` is masked by the honest party's
-  uniform `r`, so it reveals nothing about `y` for any `x`, which makes the leak a
-  genuine malicious-security violation. Here `x ≠ 0`, so `x`, `r`, and the triple
-  are input on the worker thread (key `α + 1`) while `y` stays on the main thread
-  (key `α`); only `δ = y − b` mixes keys. `run-attack.sh` samples `r` as 256
-  uniform bits reduced modulo the field prime.
 
 See the accompanying paper for the full derivation and security analysis.
