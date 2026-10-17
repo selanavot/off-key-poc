@@ -194,13 +194,3 @@ stock `mascot-party.x` with no patches. Only the attacker's own binary is patche
 in two places: the per-thread key increment in `Processor/Machine.hpp`, and the
 guess added to the honest input's MAC before the multiplication gate in
 `Processor/Processor.hpp`.
-
-## Relevant MP-SPDZ source locations
-
-| File | What |
-|---|---|
-| `Processor/Machine.hpp` | Thread creation loop (`prepare()`) |
-| `Processor/Online-Thread.hpp` | Per-thread MAC key read (`*(tinfo->alphapi)`) |
-| `OT/NPartyTripleGenerator.hpp` | Per-batch sacrifice check |
-| `Protocols/MAC_Check.hpp` | `MAC_Check_<U>::Check`, the unmasked check that opens each party's `δ_i` |
-| `Processor/Processor.hpp` | `SubProcessor::muls()`, the Beaver multiplication |
