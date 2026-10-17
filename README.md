@@ -1,11 +1,13 @@
-# Off-Key: a selective-failure attack on MP-SPDZ MASCOT via MAC-key inconsistency
+# Proof of Concept for *Off-Key: Inconsistent MAC keys cause selective-failure attacks in SPDZ-family MPC*
 
-A proof-of-concept **input-guessing selective-failure attack** against MP-SPDZ's
-MASCOT protocol. A malicious party learns an honest party's secret input by
-observing only whether the protocol succeeds or aborts — while the opened output
-reveals nothing.
+This repository is the proof-of-concept companion to the paper *Off-Key*. It
+demonstrates the attack on three SPDZ-family MPC frameworks, MP-SPDZ,
+SCALE-MAMBA, and FANNG-MPC, each as a self-contained PoC run against an
+**unmodified** honest party.
 
-> **Fixed upstream in MP-SPDZ [v0.4.3](https://github.com/data61/MP-SPDZ/commit/982e91e7a378) (Jul 2026); this PoC targets the earlier pinned commit [`58d2739`](https://github.com/data61/MP-SPDZ/commit/58d2739ac251262c0bd6034f7fc7d0666a6b1e2c).**
+> 📄 **Accompanying paper.** This PoC accompanies a research paper submitted to
+> the [IACR Cryptology ePrint Archive](https://eprint.iacr.org/). The paper is not
+> public yet; we will add a direct link here the moment it is posted.
 
 ## Background: the SPDZ MAC scheme
 
@@ -15,118 +17,49 @@ pre-authenticated under `α`, and every opened value is checked against its MAC.
 That check silently assumes everything in it was authenticated under the same `α`.
 
 A malicious party who can get material authenticated under **inconsistent MAC
-keys** can mount selective-failure attacks: they guess a secret-shared value and
-learn whether the guess was right from whether the protocol aborts, while the
-opened output reveals nothing. This is a property of the SPDZ MAC scheme, so the
-same class of issue can arise in other SPDZ-family frameworks wherever
-preprocessing generated under different key shares can be combined online.
+keys** breaks that assumption. By arranging for a secret `y` (authenticated under
+`α`) and a fresh multiplication-triple mask (a Beaver-triple value authenticated
+under `α + 1`) to meet in one check, the attacker makes the MAC check itself leak
+information about `y`.
 
-## This PoC: MP-SPDZ (MASCOT)
+All the attacks here exploit implementation vulnerabilities, and they do not break the theoretical security of SPDZ.
 
-In MP-SPDZ's multi-threaded execution each thread generates its own preprocessing,
-so a malicious party can use a different MAC-key share per thread; shares from
-different threads then meet in the same MAC check with no cross-thread consistency
-check to catch it.
+## Two strengths of the attack
 
-To demonstrate, we compute `f(x, y) := x · y`, where `x` and `y` come from the two
-parties. The attacker inputs `x = 0`, so the opened output is always `0`
-regardless of the honest party's input `y`. The output reveals nothing — yet the
-attacker learns whether `y` equals a value of their choice from the protocol's
-pass/fail alone.
+We present two attacks, differing in their generality and privacy leakage.
 
-The honest party runs an **unmodified** MP-SPDZ binary in a separate Docker
-container. Only the attacker's binary is patched.
+- **Selective abort, MAC-check-protocol independent.** The attacker folds a guess for a secret `y`
+  into the off-key material, and the check passes if and only if the guess was
+  correct. This attack uses nothing but the abort signal, so it works against *any* SPDZ
+  MAC check. This allows the adversary to check whether a potentially low-entropy secret `y` equals a value of their choice.
 
-The PoC uses MASCOT over a 128-bit prime field (MP-SPDZ default).
+- **Full secret recovery.** The attacker recovers
+  `y` outright in a single run. This attack uses the internal values of the MAC-check protocol used by all of the frameworks we attack, specifically the **unmasked** MAC check of Damgård
+  et al. (2013). Every party commits to and then opens its own check
+  share, so a participant reconstructs the check value directly and one off-key
+  opening reconstructs to `y` itself.
 
-## Quick start
+## The circuits
 
-Requires Docker. Run these from the repository root:
+We demonstrate both strengths on two functionalities, and refer the reader to the paper to see why these circuits were selected.
 
-```bash
-# 1. Build MP-SPDZ at the pinned pre-fix commit (one-time, ~10 min)
-docker build -t mpspdz:built .
+- **Example 1 - multiplication:** `f(x, y) = x · y`. The attacker inputs `x = 0`, so the opened
+  output is always `0` regardless of `y`, which means that the adversary should learn nothing about the honest party's input.
+  Our two attacks allow testing whether `y = g`, and learning `y` outright respectively.
 
-# 2. Correct guess → program succeeds → attacker learns y = 7
-./run-attack.sh 7 7
+- **Example 2 - affine transformation:** `f(x; (y, r)) = x · y + r`, with the adversary inputting `x` and the honest party `(y, r)`. In the case where `r` is uniformly random, it completely masks the output, so the adversary should learn no information about `y`. As before, in our first attack the adversary checks whether `y = g` for a guess `g`,
+and in the second the adversary recovers `y` outright.
 
-# 3. Wrong guess → MAC check fails → attacker learns y ≠ 7
-./run-attack.sh 7 3
-```
+## Frameworks
 
-`run-attack.sh [guess] [secret]` starts two containers on a Docker network — an
-`honest` party running the stock `mascot-party.x`, and an `attacker` party whose
-binary is patched at runtime — and reports what the attacker learns.
+We present the PoC against each framework in its own self-contained directory. Each demonstrates
+**both strengths of the attack on both circuits**, with build and run
+instructions. The frameworks differ only in the *vector* that supplies the
+inconsistent MAC keys, which we explain in detail in their respective READMEs.
 
-## The program
+- **[`mp-spdz/`](mp-spdz/)**. Each thread in its parallelized MASCOT implementation
+  generates its own preprocessing, allowing an adversary to input different keys to different threads in the same computation.
+- **[`scale-mamba/`](scale-mamba/)**. In the full threshold implementation, a computation can be restarted across runs. The MAC-key share is re-read from disk at the start of every run, allowing the adversary to input a different MAC key share.
+- **[`fanng/`](fanng/)**. A SCALE-MAMBA fork that inherits the same cross-run vulnerability.
 
-`simple_threaded_mul.mpc` is a standard multi-threaded MPC program:
-
-```python
-x = MemValue(sint.get_input_from(0))   # party 0's input
-y = MemValue(sint.get_input_from(1))   # party 1's input
-result = sint.Array(1)
-
-def worker():
-    result[regint(0)] = x.read() * y.read()
-
-tape = program.new_tape(worker)
-program.join_tape(program.run_tape(tape, 0))
-print_ln('x * y = %s', result[0].reveal())
-```
-
-Main thread takes inputs, worker thread computes, main thread reveals. This is the
-standard MP-SPDZ pattern — the same architecture used by:
-
-- [`vickrey.mpc`](https://github.com/data61/MP-SPDZ/blob/master/Programs/Source/vickrey.mpc) — Vickrey auction (main thread inputs bids, workers sort, main thread reveals winner)
-- [`idash_train.mpc`](https://github.com/data61/MP-SPDZ/blob/master/Programs/Source/idash_train.mpc) / [`idash_predict.mpc`](https://github.com/data61/MP-SPDZ/blob/master/Programs/Source/idash_predict.mpc) — ML training/prediction benchmarks
-- [`bankers_bonus.mpc`](https://github.com/data61/MP-SPDZ/blob/master/Programs/Source/bankers_bonus.mpc) — Millionaires' problem
-- Any program using `@for_range_multithread` or `@for_range_opt_multithread`
-
-Both parties run this exact same unmodified program.
-
-## The attack
-
-The attacker patches their binary (not the program) with two changes:
-
-1. **`Processor/Machine.hpp`** — increment the MAC-key share (`alpha += 1`) between
-   thread initializations, so thread 0 (main thread) uses key `alpha` and thread 1
-   (worker) uses `alpha + 1`.
-
-2. **`Processor/Processor.hpp`** — before the multiplication gate in the worker
-   thread, add the guess `g` to the MAC of the honest party's input share.
-
-The attacker always inputs `x = 0`. The output is always `0` — **the attacker
-should learn nothing from the output**. But:
-
-- If `y = g`: the MAC error terms cancel, the worker thread's MAC check passes, the
-  program prints `DONE`.
-- If `y ≠ g`: the error terms don't cancel → `MacCheck Failure` → abort.
-
-The attacker learns `y` from whether the program succeeds or crashes.
-
-## Why it works
-
-In MP-SPDZ's multi-threaded execution with on-demand preprocessing, each thread
-independently generates Beaver triples via OT. Each thread's triples pass the
-per-batch sacrifice check, but there is no cross-thread MAC-key consistency check —
-the offline phase verifies each batch in isolation.
-
-The attacker exploits this by giving thread 0 and thread 1 different MAC keys.
-Crucially, each worker thread runs its own MAC check on all opened values before
-joining back to the main thread (at end-of-tape). This means the Beaver
-multiplication's mask values (`epsilon`, `delta`) are checked under the worker's
-modified key — not the main thread's key. The attacker controls the error term via
-the guess added to the MAC.
-
-See [REPORT.md](REPORT.md) for the full technical analysis with code traces.
-
-## Files
-
-| File | Description |
-|------|-------------|
-| `run-attack.sh` | Two-container attack demo |
-| `simple_threaded_mul.mpc` | MPC program (both parties run this, unmodified) |
-| `patch_guess.py` | Patches applied to the attacker's binary at runtime |
-| `Dockerfile` | Builds unmodified MP-SPDZ at the pinned pre-fix commit |
-| `REPORT.md` | Technical analysis with code traces |
+The MP-SPDZ vulnerability has been fixed in [v0.4.3](https://github.com/data61/MP-SPDZ/commit/982e91e7a378) (July 2026). We have permission from the maintainers of all frameworks to make this attack public. We refer the readers to our paper for more information, including mitigation.
