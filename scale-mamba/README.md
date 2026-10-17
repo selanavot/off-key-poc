@@ -48,13 +48,12 @@ SCALE-MAMBA using the *unmasked* MAC check; see
 (**Example 2**): `f(x; (y, r)) = x*y + r`. The honest party holds `y` (run 1) and a
 mask `r` (run 2); the attacker holds `x`. Privacy wants `r` uniform over the whole
 field, but the attack is independent of `r`'s distribution, and
-SCALE-MAMBA's clear input path is 64-bit, so `r` is a uniform 64-bit mask —
-ample for the small `x` used here (a full-field uniform mask is the theoretical ideal).
-The output `x*y+r` is masked by `r` and reveals nothing about `y` — yet
-complete-vs-abort still tests whether `y` equals the guess. Unlike
-Example 1 (`x = 0`, whose zero output an ideal-world adversary could also
+SCALE-MAMBA's clear input path is 64-bit, so `r` is a uniform 64-bit mask, ample
+for the small `x` used here. The output `x*y+r` is masked by `r` and reveals
+nothing about `y`, yet complete-vs-abort still tests whether `y` equals the guess.
+Unlike Example 1 (`x = 0`, whose zero output an ideal-world adversary could also
 produce), leaking `y` here is a genuine violation of malicious security. It uses
-the same restart tampering as `run-attack.sh`; no recovery instrumentation.
+the same restart tampering as `run-attack.sh`, with no recovery instrumentation.
 
 > Needs x86 AES-NI/PCLMULQDQ, so it runs under linux/amd64 emulation (slow but
 > works on Apple Silicon via Docker Desktop).
@@ -172,7 +171,7 @@ MAC shares satisfy `Σ m_i = α·v`. It is carried to run 2, where the corrupted
 party (party 1 in the PoC) increments its key share `α_1 → α_1 + 1` (global key
 becomes `α' = α + 1`) and adds a guess `g` to its loaded share of `v`'s MAC
 (`m_1 → m_1 + g`). When `v` (or a value derived from it, e.g. a Beaver mask
-opening `v − a`) is checked in run 2, the MAC residual is:
+opening `v − a`) is checked in run 2, the MAC check computes:
 
 ```
 Σ_i ( m_i − α_i^current · v )

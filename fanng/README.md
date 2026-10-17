@@ -8,9 +8,9 @@ FANNG-specific proof of concept, with the run knobs FANNG needs.
 > **What's bundled here.** FANNG-MPC's build harness ([`docker/`](docker/)) and
 > the no-AVX emulation patch ([`patches/avx_memcpy.h`](patches/avx_memcpy.h)) are
 > git-untracked upstream, so copies are included here. The complete, tested
-> end-to-end procedure — including running the **real FHE/BGV** offline on a
+> end-to-end procedure, including running the **real FHE/BGV** offline on a
 > native x86 box (required; local Apple-Silicon emulation can do `FAKE=1` only,
-> and the real-FHE peak exceeds the Docker VM cap) — is in
+> and the real-FHE peak exceeds the Docker VM cap), is in
 > [`NATIVE-X86-RUNBOOK.md`](NATIVE-X86-RUNBOOK.md). Both the input-recovery and
 > Example 2 affine attacks were verified on native x86 under real FHE.
 
@@ -53,7 +53,7 @@ reads `Data/MKey-<i>.key` and runs the same online MAC check) and only bypasses
 the FHE path.
 
 > **Memory warning.** The real FHE offline (the default) peaks at ~17 GiB
-> resident on variant 18 and needs a native x86 machine with around  32 GB RAM. Use FAKE=1 to run in low memory environments.
+> resident on variant 18 and needs a native x86 machine with around 32 GB RAM. Use FAKE=1 to run in low-memory environments.
 
 The driver also passes two FANNG-specific knobs: **`-dOT`** skips the binary
 TinyOT/OT production (the attack is purely arithmetic, so the binary engine is
