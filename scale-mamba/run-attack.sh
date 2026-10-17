@@ -96,7 +96,8 @@ R=$(python3 -c "import secrets; print(secrets.randbits(64))")
 # The affine programs are compiled at runtime so edits take effect without a rebuild.
 if [ "$CIRCUIT" = affine ]; then
   [ "$ATTACK" = recovery ] && PROGDIR=attack_affine_recover || PROGDIR=attack_affine
-  docker cp "Programs/$PROGDIR" "$CONTAINER":/scale/Programs/"$PROGDIR" >/dev/null
+  docker exec "$CONTAINER" bash -lc "mkdir -p /scale/Programs/$PROGDIR" >/dev/null
+  docker cp "Programs/$PROGDIR/$PROGDIR.mpc" "$CONTAINER":/scale/Programs/"$PROGDIR"/"$PROGDIR".mpc >/dev/null
   docker exec "$CONTAINER" bash -lc "cd /scale && ./compile-new.sh Programs/$PROGDIR >/dev/null 2>&1" || true
   echo "Honest party's mask:   r = $R   (uniform 64-bit, hidden from the attacker)"
   echo
