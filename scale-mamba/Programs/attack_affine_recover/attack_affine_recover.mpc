@@ -1,0 +1,27 @@
+# PoC run 2 (-memory old), EXAMPLE 2 with FULL INPUT RECOVERY.
+#
+# Same affine functionality as attack_affine (f(x; (y, r)) = x*y + r, output
+# masked by the honest party's r), but instead of the one-bit selective-failure
+# test this recovers y outright from the unmasked MAC check, exactly as
+# attack_recover does for the multiplication circuit.
+#
+# y was stored in run 1 under the MAC key alpha. Between runs the attacker
+# (Player 1) incremented its key share (global key -> alpha+1). In run 2 P0
+# enters r and P1 enters x, so both -- and every fresh preprocessing value -- are
+# authenticated under alpha+1; only y is still under alpha.
+#
+# We reveal the masked affine output z = x*y + r FIRST (it is correctly keyed, so
+# it contributes nothing to recovery and demonstrates that the output hides y),
+# then open a single standalone off-key value d = y - b LAST. That last opening
+# is the unique nopen=1 off-key check, so the recovery instrumentation inverts it
+# to y (see patches/offkey_recover.py); the driver reads the last nopen=1 line.
+y = sint.load_mem(100)                    # carried from run 1 (under alpha)
+print_ln("Player 1, please enter x:")
+x = sint.get_private_input_from(1)        # attacker's x (run 2 -> alpha+1)
+print_ln("Player 0, please enter r:")
+r = sint.get_private_input_from(0)        # honest party's mask r (64-bit; see attack_affine)
+z = x * y + r
+print_ln("z = %s (masked by r; reveals nothing about y)", z.reveal())
+b, _ = sint.get_random_square()           # b: fresh mask, authenticated under alpha+1
+d = (y - b).reveal()                      # single off-key opening d = y - b (recovery)
+print_ln("d = %s (uniform; reveals nothing about y on its own)", d)

@@ -17,43 +17,37 @@ binary throughout; only the attacker's own files change.
 ```bash
 docker build --platform linux/amd64 -t scale-mamba-attack .   # one-time, ~15-20 min
 
-# Run the attack with real pre-processing, takes a few minutes
-./run-attack.sh 5 5          # correct guess -> COMPLETE -> attacker learns y = 5
-./run-attack.sh 5 4          # wrong guess   -> ABORT    -> attacker learns y != 5
+# run-attack.sh --circuit mult|affine --attack selective|recovery --real-y N [--guess-of-y G] [--x X]
 
-# Same attack with mocked preprocessing for faster iteration
-FAKE=1 ./run-attack.sh 5 5 
+# Multiplication circuit f(x, y) = x*y (the attacker fixes x = 0):
+./run-attack.sh --circuit mult --attack selective --guess-of-y 5 --real-y 5    # completes iff guess == y
+./run-attack.sh --circuit mult --attack selective --guess-of-y 5 --real-y 4    # aborts, so y != 5
+./run-attack.sh --circuit mult --attack recovery  --real-y 12345               # recovers y = 12345, no guessing
 
-# STRONGER attack: recover the secret outright in ONE run (no guessing)
-./run-recovery.sh 12345      # attacker prints y = 12345, no guessing
-FAKE=1 ./run-recovery.sh 42  # same, fast trusted-dealer offline
+# Affine circuit f(x; (y, r)) = x*y + r, output masked by a uniform r:
+./run-attack.sh --circuit affine --attack selective --guess-of-y 1 --real-y 1  # completes iff y == 1
+./run-attack.sh --circuit affine --attack recovery  --real-y 987654 --x 3      # recovers y, output stays masked
 
-# EXAMPLE 2: private affine evaluation f(x;(y,r)) = x*y+r, output masked by r
-FAKE=1 ./run-affine.sh 1 1   # y == guess -> COMPLETE -> attacker learns y = 1
-FAKE=1 ./run-affine.sh 1 4   # y != guess -> ABORT    -> attacker learns y != 1
+# Prepend FAKE=1 for the fast trusted-dealer offline, e.g.
+FAKE=1 ./run-attack.sh --circuit mult --attack selective --guess-of-y 5 --real-y 5
 ```
 
-`run-attack.sh [guess] [secret]` runs the honest store (run 1) and the attacker's
-restart-and-open (run 2) and reports whether the guess was right. Default offline
-is real FHE/BGV (minutes per run under x86 emulation); `FAKE=1` swaps in
-SCALE-MAMBA's trusted-dealer offline, which keeps the attack identical and only
-bypasses the FHE path, so the FHE run stays the canonical proof below.
+`run-attack.sh` runs the honest store (run 1) and the attacker's restart (run 2)
+and reports the result. `--circuit` picks the functionality and `--attack` the
+strength: `selective` needs `--guess-of-y` and leaks one bit (complete vs abort);
+`recovery` reads `y` outright from the unmasked MAC check with no guessing (see
+[The input-recovery math](#the-input-recovery-math)). The default offline is real
+FHE/BGV (minutes per run under x86 emulation); `FAKE=1` swaps in SCALE-MAMBA's
+trusted-dealer offline, which keeps the attack identical and only bypasses the FHE
+path, so the FHE run stays the canonical proof below.
 
-`run-recovery.sh [secret]` is the stronger, single-run input-recovery variant:
-it recovers `y` in full rather than testing one guess. It relies on
-SCALE-MAMBA using the *unmasked* MAC check; see
-[The input-recovery math](#the-input-recovery-math) below.
-
-`run-affine.sh [guess] [secret] [x]` is the private affine evaluation
-(**Example 2**): `f(x; (y, r)) = x*y + r`. The honest party holds `y` (run 1) and a
-mask `r` (run 2); the attacker holds `x`. Privacy wants `r` uniform over the whole
-field, but the attack is independent of `r`'s distribution, and
-SCALE-MAMBA's clear input path is 64-bit, so `r` is a uniform 64-bit mask, ample
-for the small `x` used here. The output `x*y+r` is masked by `r` and reveals
-nothing about `y`, yet complete-vs-abort still tests whether `y` equals the guess.
-Unlike Example 1 (`x = 0`, whose zero output an ideal-world adversary could also
-produce), leaking `y` here is a genuine violation of malicious security. It uses
-the same restart tampering as `run-attack.sh`, with no recovery instrumentation.
+For the affine circuit, the honest party holds `y` (run 1) and a mask `r` (run 2);
+the attacker holds `x`. The output `x*y + r` is masked by `r` and reveals nothing
+about `y`, so unlike the multiplication circuit (`x = 0`, whose zero output an
+ideal-world adversary could also produce) the leak is a genuine violation of
+malicious security. Privacy wants `r` uniform over the whole field, but the attack
+is independent of `r`'s distribution, and SCALE-MAMBA's clear input path is 64-bit,
+so `r` is a uniform 64-bit mask, ample for the small `x` used here.
 
 > Needs x86 AES-NI/PCLMULQDQ, so it runs under linux/amd64 emulation (slow but
 > works on Apple Silicon via Docker Desktop).
@@ -66,14 +60,13 @@ the same restart tampering as `run-attack.sh`, with no recovery instrumentation.
 | `patches/avx_memcpy.h` | AVX path `#ifdef`-guarded for no-AVX emulation. Makes local dev on MAC easier. |
 | `patches/offkey_recover.py` | Env-gated (`OFFKEY_RECOVER`) instrumentation of the unmasked MAC check, so the attacker inverts the opened check value to recover `y`. Attacker-only at runtime; no effect without the variable. |
 | `Programs/attack_store/attack_store.mpc` | Run 1: P0 inputs `y`, store in `Ms[100]` |
-| `Programs/attack_open/attack_open.mpc` | Run 2 (selective failure): load `y`, reveal `z = x·y` with `x = 0` |
-| `Programs/attack_recover/attack_recover.mpc` | Run 2 (recovery): load `y`, open a single off-key value `d = y - b` |
-| `Programs/attack_affine/attack_affine.mpc` | Run 2 (Example 2): load `y`, enter `x` (P1) and 64-bit mask `r` (P0), reveal `z = x*y + r` |
+| `Programs/attack_open/attack_open.mpc` | Run 2 (mult, selective): load `y`, reveal `z = x·y` with `x = 0` |
+| `Programs/attack_recover/attack_recover.mpc` | Run 2 (mult, recovery): load `y`, open a single off-key value `d = y - b` |
+| `Programs/attack_affine/attack_affine.mpc` | Run 2 (affine, selective): load `y`, enter `x` (P1) and 64-bit mask `r` (P0), reveal `z = x*y + r` |
+| `Programs/attack_affine_recover/attack_affine_recover.mpc` | Run 2 (affine, recovery): the affine output plus a standalone off-key `d = y - b` opening |
 | `patcher.py` | The two between-runs edits (Player 1): `MKey-1.key`, `Memory-P1` |
-| `poc.sh` | In-container driver: `store <y>` / `open <baseline\|mkeyonly\|guess:G>` / `recover [g]` / `affine <baseline\|mkeyonly\|guess:G>` |
-| `run-attack.sh` | Selective-failure driver: `[guess] [secret]` |
-| `run-recovery.sh` | Input-recovery driver: `[secret]` |
-| `run-affine.sh` | Example 2 (private affine evaluation) driver: `[guess] [secret] [x]` |
+| `poc.sh` | In-container driver: `store` / `open` / `recover` / `affine` / `affine-recover` |
+| `run-attack.sh` | The attack driver (circuit and attack type are flags; see above) |
 
 ## How it works
 

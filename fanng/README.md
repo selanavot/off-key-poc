@@ -28,29 +28,33 @@ docker/run.sh build && docker/run.sh up && docker/run.sh progs
 Then, from this folder:
 
 ```bash
-# Real FHE/BGV preprocessing -- the default (see the memory warning below)
-./run-attack.sh 5 5      # correct guess -> COMPLETE -> attacker learns y = 5
-./run-attack.sh 5 4      # wrong guess   -> ABORT    -> attacker learns y != 5
+# run-attack.sh --circuit mult|affine --attack selective|recovery --real-y N [--guess-of-y G] [--x X]
 
-# Same attack with trusted-dealer preprocessing: fast and low-memory
-FAKE=1 ./run-attack.sh 5 5
+# Multiplication circuit f(x, y) = x*y (the attacker fixes x = 0):
+./run-attack.sh --circuit mult --attack selective --guess-of-y 5 --real-y 5    # completes iff guess == y
+./run-attack.sh --circuit mult --attack selective --guess-of-y 5 --real-y 4    # aborts, so y != 5
+./run-attack.sh --circuit mult --attack recovery  --real-y 12345               # recovers y = 12345, no guessing
 
-# STRONGER attack: recover the secret outright in ONE run (no guessing)
-FAKE=1 ./run-recovery.sh 12345   # attacker prints y = 12345, no guessing
+# Affine circuit f(x; (y, r)) = x*y + r, output masked by a uniform r:
+./run-attack.sh --circuit affine --attack selective --guess-of-y 1 --real-y 1  # completes iff y == 1
+./run-attack.sh --circuit affine --attack recovery  --real-y 987654 --x 3      # recovers y, output stays masked
 
-# EXAMPLE 2: private affine evaluation f(x;(y,r)) = x*y+r, output masked by r
-FAKE=1 ./run-affine.sh 1 1       # y == guess -> COMPLETE -> attacker learns y = 1
-FAKE=1 ./run-affine.sh 1 4       # y != guess -> ABORT    -> attacker learns y != 1
+# Prepend FAKE=1 for the fast, low-memory trusted-dealer offline, e.g.
+FAKE=1 ./run-attack.sh --circuit mult --attack selective --guess-of-y 5 --real-y 5
 ```
 
-`run-attack.sh [guess] [secret]` installs variant 18, syncs the attack programs
-and poc scripts into the running `fanng` container, runs the honest store (run 1)
-and the attacker's restart-and-open (run 2), and reports whether the guess was
-right. The default offline is the **real FHE/BGV** preprocessing, including the
-per-run `ctx_macs = Enc(alpha_i)` regeneration the attack abuses; `FAKE=1` swaps
-in FANNG's trusted-dealer offline, which keeps the attack identical (it still
-reads `Data/MKey-<i>.key` and runs the same online MAC check) and only bypasses
-the FHE path.
+`run-attack.sh` installs variant 18, syncs the attack programs and poc scripts
+into the running `fanng` container, runs the honest store (run 1) and the
+attacker's restart (run 2), and reports the result. `--circuit` picks the
+functionality and `--attack` the strength: `selective` needs `--guess-of-y` and
+leaks one bit (complete vs abort); `recovery` reads `y` outright from the unmasked
+MAC check with no guessing (and, since that instruments the check, it applies
+`patches/offkey_recover.py` and rebuilds the runtime once before running). The
+default offline is the **real FHE/BGV** preprocessing, including the per-run
+`ctx_macs = Enc(alpha_i)` regeneration the attack abuses; `FAKE=1` swaps in FANNG's
+trusted-dealer offline, which keeps the attack identical (it still reads
+`Data/MKey-<i>.key` and runs the same online MAC check) and only bypasses the FHE
+path.
 
 > **Memory warning.** The real FHE offline (the default) peaks at ~17 GiB
 > resident on variant 18 and needs a native x86 machine with around 32 GB RAM. Use FAKE=1 to run in low-memory environments.
@@ -62,8 +66,8 @@ stdin/stdout IO so the guess can be fed on stdin.
 
 ## Stronger attack: full input recovery
 
-`run-recovery.sh [secret]` upgrades the selective-failure oracle (one bit per
-run) to **full input recovery in a single run, no guessing**, exactly as in
+`--attack recovery` upgrades the selective-failure oracle (one bit per run) to
+**full input recovery in a single run, no guessing**, exactly as in
 [`../scale-mamba/README.md`](../scale-mamba/README.md) ("The input-recovery
 math"). FANNG inherits SCALE-MAMBA's **unmasked** SPDZ MAC check verbatim:
 `Open_Protocol::RunOpenCheck` commits to and opens each party's own check share
@@ -75,10 +79,10 @@ inverts it to `y = g - t/r`. The opened `d` is uniform and leaks nothing; the
 secret leaks through the unmasked check value, before the abort. With `g = 0` the
 only between-runs edit is `alpha_1 -> alpha_1 + 1`.
 
-Unlike the selective-failure PoC (which needs no source change), the recovery
-variant instruments the check, so `run-recovery.sh` applies
-`patches/offkey_recover.py` to the mounted source and **rebuilds the runtime
-once** before running. The instrumentation is gated on `OFFKEY_RECOVER` (set only
+Unlike the selective attacks (which need no source change), the recovery attacks
+instrument the check, so `run-attack.sh` applies `patches/offkey_recover.py` to
+the mounted source and **rebuilds the runtime once** before running. The
+instrumentation is gated on `OFFKEY_RECOVER` (set only
 on the attacker, Player 1); an honest party running the same binary without the
 variable is unaffected. Under real FHE the offline sacrifice phase also opens
 values, but only in large correctly keyed batches, so the recovery line to read
@@ -88,11 +92,12 @@ is the unique `nopen=1` online opening (the driver filters on that).
 
 | File | What |
 |---|---|
-| `run-attack.sh` | Selective-failure driver: `[guess] [secret]` against the `fanng` container |
-| `run-recovery.sh` | Input-recovery driver: `[secret]`; patches + rebuilds the runtime, then recovers `y` in one run |
-| `poc.sh` | In-container driver (`store`/`open`/`recover`); real FHE by default; `-dOT` + Simple IO; `FAKE=1` for trusted-dealer |
+| `run-attack.sh` | The attack driver (circuit and attack type are flags; see above) against the `fanng` container |
+| `poc.sh` | In-container driver (`store`/`open`/`recover`/`affine`/`affine-recover`); real FHE by default; `-dOT` + Simple IO; `FAKE=1` for trusted-dealer |
 | `patcher.py` | The two between-runs edits (Player 1): `MKey-1.key`, `Memory-P1` |
 | `patches/offkey_recover.py` | Env-gated (`OFFKEY_RECOVER`) instrumentation of the unmasked MAC check for recovery; attacker-only, no effect without the variable |
 | `Programs/attack_store/attack_store.mpc` | Run 1: P0 inputs `y`, store in `Ms[100]` |
-| `Programs/attack_open/attack_open.mpc` | Run 2 (selective failure): load `y`, reveal `z = x·y` with `x = 0` |
-| `Programs/attack_recover/attack_recover.mpc` | Run 2 (recovery): load `y`, open a single off-key value `d = y - b` |
+| `Programs/attack_open/attack_open.mpc` | Run 2 (mult, selective): load `y`, reveal `z = x·y` with `x = 0` |
+| `Programs/attack_recover/attack_recover.mpc` | Run 2 (mult, recovery): load `y`, open a single off-key value `d = y - b` |
+| `Programs/attack_affine/attack_affine.mpc` | Run 2 (affine, selective): load `y`, enter `x` (P1) and 64-bit mask `r` (P0), reveal `z = x*y + r` |
+| `Programs/attack_affine_recover/attack_affine_recover.mpc` | Run 2 (affine, recovery): the affine output plus a standalone off-key `d = y - b` opening |

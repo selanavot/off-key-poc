@@ -12,14 +12,15 @@ MAC-key share per thread. Shares from different threads then meet in the same MA
 check, with no cross-thread consistency check to catch it: the main thread uses
 key `α` and the worker thread uses `α + 1`.
 
-Both attack strengths run on both circuits:
+Both attack strengths run on both circuits, selected by flags to `run-attack.sh`
+(`--attack selective|recovery`, `--circuit mult|affine`):
 
-- **Selective abort** (`run-attack.sh`): the attacker guesses `y`, and the check
-  passes only if the guess was right, leaking one bit per run.
-- **Full secret recovery** (`run-recovery.sh`): the attacker reads `y` outright in
-  a single run, with no guessing, from the value opened by the unmasked MAC check.
-- **Example 2** (`run-affine.sh`): the same two attacks on the affine functionality
-  `f(x; (y, r)) = x·y + r`, whose output is masked by a uniform `r`.
+- **Selective abort** (`--attack selective`): the attacker guesses `y`, and the
+  check passes only if the guess was right, leaking one bit per run.
+- **Full secret recovery** (`--attack recovery`): the attacker reads `y` outright
+  in a single run, with no guessing, from the value opened by the unmasked MAC check.
+- **Example 2** (`--circuit affine`): the same two attacks on the affine
+  functionality `f(x; (y, r)) = x·y + r`, whose output is masked by a uniform `r`.
 
 > **Fixed upstream in MP-SPDZ [v0.4.3](https://github.com/data61/MP-SPDZ/commit/982e91e7a378) (July 2026); this PoC targets the earlier pinned commit [`58d2739`](https://github.com/data61/MP-SPDZ/commit/58d2739ac251262c0bd6034f7fc7d0666a6b1e2c).**
 
@@ -138,7 +139,7 @@ for every opened value. No guess is needed. The worker opens `d = y − b` under
 d·(α + 1) − m_d = (y − b)(α + 1) − (α·y − (α + 1)·b) = y
 ```
 
-`run-recovery.sh` reads `y` straight off this value. The check then aborts (the
+`--attack recovery` reads `y` straight off this value. The check then aborts (the
 value is nonzero), but recovery already happened, since the check shares are opened
 before the abort decision, and the opened output `x·y = 0` still reveals nothing.
 Adding a guess `g` to `y`'s MAC instead recovers `y − g`; with `g = 0` it is `y`.
@@ -157,8 +158,9 @@ authenticated under the worker key `α + 1`, the same key as the triple; otherwi
 the main thread (key `α`) and `x`, `r`, and the one-sided-output mask on the worker
 thread (key `α + 1`), so MP-SPDZ input files are per thread
 (`Input-P<i>-<thread>`). Only the `d = y − b` opening then mixes keys, so it is the
-sole off-key value. `run-affine.sh` samples `r` as 256 uniform bits reduced modulo
-the field prime; the attack itself is independent of `r`'s distribution.
+sole off-key value. For the affine circuit `run-attack.sh` samples `r` as 256
+uniform bits reduced modulo the field prime; the attack itself is independent of
+`r`'s distribution.
 
 ## Threat model
 
