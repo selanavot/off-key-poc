@@ -54,8 +54,7 @@ knobs automatically: `-dOT` skips the unused binary-OT preprocessing, and
 > We recommend a native x86 Linux machine with ~32 GB RAM: the default real
 > FHE/BGV offline peaks at ~17 GiB on variant 18. On Apple Silicon it runs under
 > linux/amd64 emulation, which is slow and too memory-constrained for the real
-> offline, so use `FAKE=1` there. The tested native end-to-end procedure is in
-> [`NATIVE-X86-RUNBOOK.md`](NATIVE-X86-RUNBOOK.md).
+> offline, so use `FAKE=1` there.
 
 ## Files
 
