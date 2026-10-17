@@ -99,11 +99,11 @@ R=$(python3 -c "import secrets; print(secrets.randbits(64))")
                 || echo "Offline: FHE/BGV (real, default) + -dOT  (needs native x86, >= 32 GB RAM; FAKE=1 for fast low-memory run)"
 echo
 
-# Recovery needs python3 in-container for the source patcher.
-if [ "$ATTACK" = recovery ]; then
-  docker exec "$CONTAINER" bash -lc 'command -v python3 >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq python3)' >/dev/null 2>&1 \
-    || { echo 'error: could not ensure python3 in the container'; exit 1; }
-fi
+# Every attack needs python3 in-container: patcher.py (the between-runs MKey/Memory
+# edit) runs under python3, and the recovery instrumentation patcher does too. The
+# stock FANNG image ships only python2, so install python3 once if missing.
+docker exec "$CONTAINER" bash -lc 'command -v python3 >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq python3)' >/dev/null 2>&1 \
+  || { echo 'error: could not ensure python3 in the container'; exit 1; }
 
 # Install variant 18, sync the poc scripts and the attack programs for this combo.
 docker exec "$CONTAINER" bash -lc "cp Auto-Test-Data/18/* Data/ && cp Auto-Test-Data/Cert-Store/* Cert-Store/ && mkdir -p /fanng/poc /fanng/poc/patches /fanng/Programs/attack_store /fanng/Programs/$PROG" >/dev/null

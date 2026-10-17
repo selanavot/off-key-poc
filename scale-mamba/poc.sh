@@ -18,6 +18,9 @@ cd "$ROOT"
 export USE_RUST=0
 HERE="$(cd "$(dirname "$0")" && pwd)"     # where poc.sh + patcher.py live
 PATCHER="$HERE/patcher.py"
+# patcher.py does the between-runs tampering; a failure here (e.g. missing
+# python3) must abort, never silently fall through to an un-tampered baseline run.
+run_patcher() { python3 "$PATCHER" "$@" || { echo "ERROR: patcher.py failed (is python3 present?)" >&2; exit 1; }; }
 BK="$HERE/bk"
 
 # Offline mode. Default: FHE, the real Full Threshold preprocessing (slow, and
@@ -115,8 +118,8 @@ case "$cmd" in
     pq=""; [ "${QUIET:-0}" = 1 ] && pq="--quiet"
     case "$arg" in
       baseline) [ "${QUIET:-0}" = 1 ] || echo "  [no patch]";;
-      mkeyonly) python3 "$PATCHER" --data-dir "$ROOT/Data" --mkey-only $pq;;
-      guess:*)  python3 "$PATCHER" --data-dir "$ROOT/Data" --guess "${arg#guess:}" $pq;;
+      mkeyonly) run_patcher --data-dir "$ROOT/Data" --mkey-only $pq;;
+      guess:*)  run_patcher --data-dir "$ROOT/Data" --guess "${arg#guess:}" $pq;;
       *) echo "unknown open mode: $arg"; exit 2;;
     esac
     run_players attack_open old "" "0\n"
@@ -132,7 +135,7 @@ case "$cmd" in
     cp "$BK"/Memory-P1 Data/Memory-P1
     cp "$BK"/MKey-1.key Data/MKey-1.key
     pq=""; [ "${QUIET:-0}" = 1 ] && pq="--quiet"
-    python3 "$PATCHER" --data-dir "$ROOT/Data" --mkey-only $pq
+    run_patcher --data-dir "$ROOT/Data" --mkey-only $pq
     g="${arg:-0}"
     run_players attack_recover old "" "" "OFFKEY_RECOVER=1 OFFKEY_GUESS=$g"
     # The instrumentation inverts the last opening of each small online check.
@@ -160,8 +163,8 @@ case "$cmd" in
     pq=""; [ "${QUIET:-0}" = 1 ] && pq="--quiet"
     case "$arg" in
       baseline) [ "${QUIET:-0}" = 1 ] || echo "  [no patch]";;
-      mkeyonly) python3 "$PATCHER" --data-dir "$ROOT/Data" --mkey-only $pq;;
-      guess:*)  python3 "$PATCHER" --data-dir "$ROOT/Data" --guess "${arg#guess:}" $pq;;
+      mkeyonly) run_patcher --data-dir "$ROOT/Data" --mkey-only $pq;;
+      guess:*)  run_patcher --data-dir "$ROOT/Data" --guess "${arg#guess:}" $pq;;
       *) echo "unknown affine mode: $arg"; exit 2;;
     esac
     # P0 (honest) enters r; P1 (attacker) enters x.
@@ -179,7 +182,7 @@ case "$cmd" in
     cp "$BK"/Memory-P1 Data/Memory-P1
     cp "$BK"/MKey-1.key Data/MKey-1.key
     pq=""; [ "${QUIET:-0}" = 1 ] && pq="--quiet"
-    python3 "$PATCHER" --data-dir "$ROOT/Data" --mkey-only $pq
+    run_patcher --data-dir "$ROOT/Data" --mkey-only $pq
     g="${arg:-0}"
     # P0 (honest) enters y (for the affine output) then r; P1 (attacker) enters x
     # and runs OFFKEY_RECOVER=1. The carried y (run 1) is recovered from the last
