@@ -112,10 +112,8 @@ def worker():
 ```
 
 Here `y` is taken on the main thread (key `α`) while `x`, `r`, and the triple are
-on the worker thread (key `α+1`). Because `r` is uniform the output is uniform for
-any `x`, so it reveals nothing about `y`, which makes the leak a genuine
-malicious-security violation rather than a simulatable one. See
-[How it works](#how-it-works) for why the key assignment is needed.
+on the worker thread (key `α+1`). Because `r` is uniform the output is uniform, so it reveals nothing about `y`.
+This makes the leak a malicious-security violation.
 
 ## How it works
 
@@ -132,11 +130,11 @@ Thread 1: reads α+1, base OTs with key α+1
 ```
 
 Both threads' triples still pass the offline sacrifice check (each batch is
-verified in isolation against its own key, with no cross-thread consistency check).
+verified in isolation against its own key).
 At end-of-tape the worker thread runs its own MAC check, under `α + 1`, on the
 values it opened, including the Beaver masks `ε = x − a` and `δ = y − b`. The
 carried secret `y` was authenticated under `α`, so the opening `δ = y − b` mixes
-keys, and that is what the attack exploits:
+keys, and that is what the attack exploits in two ways:
 
 - **Selective abort:** the attacker adds a guess `g` to `y`'s MAC, so the check
   passes iff `g = y`.
