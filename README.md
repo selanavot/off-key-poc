@@ -1,13 +1,13 @@
-# Proof of Concept for *Off-Key: Inconsistent MAC keys cause selective-failure attacks in SPDZ-family MPC*
+# Proof of Concept for *Off-Key: Inconsistent MAC Keys Compromise Privacy in SPDZ-Family MPC*
 
 This repository is the proof-of-concept companion to the paper *Off-Key*. It
 demonstrates the attack on three SPDZ-family MPC frameworks, MP-SPDZ,
 SCALE-MAMBA, and FANNG-MPC, each as a self-contained PoC run against an
 **unmodified** honest party.
 
-> 📄 **Accompanying paper.** This PoC accompanies a research paper submitted to
-> the [IACR Cryptology ePrint Archive](https://eprint.iacr.org/). The paper is not
-> public yet; we will add a direct link here the moment it is posted.
+> 📄 **Accompanying paper.** [Off-Key: Inconsistent MAC Keys Compromise Privacy in
+> SPDZ-Family MPC](https://eprint.iacr.org/2026/2533), IACR Cryptology ePrint
+> Archive, Paper 2026/2533.
 
 ## Background: the SPDZ MAC scheme
 
